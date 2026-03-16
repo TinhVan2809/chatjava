@@ -13,6 +13,7 @@ import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -101,13 +102,13 @@ public class ChatClientFrame extends JFrame {
     private FxChatView fxGroupView;
     private final JTextField inputField = new JTextField();
     private final JButton sendButton = new ModernButton("Gui", ButtonVariant.PRIMARY);
-    private final JButton sendImageButton = new ModernButton("Gui anh", ButtonVariant.GHOST);
-    private final JButton sendFileButton = new ModernButton("Gui file", ButtonVariant.GHOST);
-    private final JButton logoutButton = new ModernButton("Dang xuat", ButtonVariant.SECONDARY);
+    private final JButton sendImageButton = new ModernButton("Gửi ảnh", ButtonVariant.GHOST);
+    private final JButton sendFileButton = new ModernButton("Gửi file", ButtonVariant.GHOST);
+    private final JButton logoutButton = new ModernButton("Đăng xuất", ButtonVariant.SECONDARY);
     // Danh sach nguoi dang online (server se gui cap nhat dinh ky theo su kien join/leave).
     private final DefaultListModel<String> onlineUsersModel = new DefaultListModel<>();
     private final JList<String> onlineUsersList = new JList<>(onlineUsersModel);
-    private final JButton startPrivateChatButton = new ModernButton("Chat rieng", ButtonVariant.PRIMARY);
+    private final JButton startPrivateChatButton = new ModernButton("Chat riêng", ButtonVariant.PRIMARY);
     // Tab trung tam: gom tab Chat, Online va cac tab PM duoc tao dong.
     private final JTabbedPane chatTabs = new JTabbedPane();
     private final Map<String, PrivateChatTab> privateChatTabs = new HashMap<>();
@@ -443,6 +444,7 @@ public class ChatClientFrame extends JFrame {
         setLocationRelativeTo(null);
 
         buildUi();
+        setButtonIcons();
         bindEvents();
         resetToAuthState("Server: " + host + ":" + port, Theme.MUTED_TEXT);
     }
@@ -869,6 +871,37 @@ public class ChatClientFrame extends JFrame {
         });
     }
 
+    private void setButtonIcons() {
+        // For the main chat panel
+        setupIconButton(this.sendImageButton, "send_image.png", "📷", "Gửi ảnh", 16);
+        setupIconButton(this.sendFileButton, "send_file.png", "📎", "Gửi file", 16);
+    }
+
+    private void setupIconButton(JButton button, String filename, String fallbackText, String tooltip, int size) {
+        button.setToolTipText(tooltip);
+        // Canh lai padding de nut trong vuong van va dong bo chieu cao
+        button.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        File file = new File("lib", filename);
+        if (!file.exists()) {
+            file = new File("../lib", filename);
+        }
+
+        if (file.exists()) {
+            try {
+                ImageIcon originalIcon = new ImageIcon(file.getAbsolutePath());
+                Image scaledImage = originalIcon.getImage().getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH);
+                button.setIcon(new ImageIcon(scaledImage));
+                button.setText(""); // Co icon thi xoa text
+            } catch (Exception e) {
+                button.setIcon(null);
+                button.setText(fallbackText); // Fallback khi co loi
+            }
+        } else {
+            button.setIcon(null);
+            button.setText(fallbackText); // Fallback khi khong tim thay file
+        }
+    }
     // Cap nhat trang thai enable/disable cua nut "Chat rieng" theo user dang duoc chon.
     private void updatePrivateChatButtonState() {
         String selectedUsername = extractSelectedOnlineUsername();
@@ -2969,19 +3002,9 @@ public class ChatClientFrame extends JFrame {
         private final JPanel messagesPanel = new JPanel();
         private JScrollPane messagesScrollPane;
         private final JTextField input = new JTextField();
-        private final JButton sendButton = new ModernButton("Gui", ButtonVariant.PRIMARY);
+        private final JButton sendButton = new ModernButton("Gửi", ButtonVariant.PRIMARY);
         private final JButton sendImageButton = new ModernButton("", ButtonVariant.GHOST);
         private final JButton sendFileButton = new ModernButton("", ButtonVariant.GHOST);
-                private void setButtonIcons() {
-                    // Set icon for sendImageButton
-                    ImageIcon imageIcon = new ImageIcon("lib/send_image.png"); // Path to your image icon
-                    sendImageButton.setIcon(imageIcon);
-                    sendImageButton.setToolTipText("Gửi ảnh");
-                    // Set icon for sendFileButton
-                    ImageIcon fileIcon = new ImageIcon("lib/send_file.png"); // Path to your file icon
-                    sendFileButton.setIcon(fileIcon);
-                    sendFileButton.setToolTipText("Gửi file");
-                }
         private final JButton closeButton = new ModernButton("Dong", ButtonVariant.SECONDARY);
         private final JLabel peerTypingLabel = new JLabel();
 
@@ -3066,6 +3089,11 @@ public class ChatClientFrame extends JFrame {
             setEnabled(true);
         }
 
+        private void setButtonIcons() {
+            setupIconButton(sendImageButton, "send_image.png", "📷", "Gửi ảnh", 16);
+            setupIconButton(sendFileButton, "send_file.png", "📎", "Gửi file", 16);
+        }
+
         private String getTabTitle() {
             return "PM: " + peerUsername;
         }
@@ -3122,26 +3150,26 @@ public class ChatClientFrame extends JFrame {
 
         private void appendIncomingImage(String fromDisplayName, String fileName, ImageIcon icon) {
             setPeerTyping(false, null);
-            appendImageBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gui anh: " + fileName, icon);
+            appendImageBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gửi ảnh: " + fileName, icon);
         }
 
         private void appendOutgoingImage(String toDisplayName, String fileName, ImageIcon icon) {
-            appendImageBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, "Gui anh: " + fileName, icon);
+            appendImageBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, "Gửi ảnh: " + fileName, icon);
         }
 
         private void appendIncomingFile(String fromDisplayName, String fileName, long sizeBytes) {
             String suffix = sizeBytes >= 0 ? " (" + formatBytes(sizeBytes) + ")" : "";
             setPeerTyping(false, null);
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gui file: " + fileName + suffix);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gửi file: " + fileName + suffix);
         }
 
         private void appendOutgoingFile(String toDisplayName, String fileName, long sizeBytes) {
             String suffix = sizeBytes >= 0 ? " (" + formatBytes(sizeBytes) + ")" : "";
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, "Gui file: " + fileName + suffix);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, "Gửi file: " + fileName + suffix);
         }
 
         private void appendSystem(String message) {
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.SYSTEM, null, "[He thong] " + message);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.SYSTEM, null, "[Hệ thống] " + message);
         }
 
         private void handleLocalTypingInputChanged() {

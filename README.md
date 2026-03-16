@@ -29,7 +29,7 @@ java -cp bin App server 5000
 
 ```powershell || terminal
 cd chatbox
-java --module-path C:/javafx-sdk-21.0.10/lib --add-modules javafx.controls,javafx.swing -cp bin App client 127.0.0.1 5000
+ java --module-path C:/javafx-sdk-21.0.10/lib --add-modules javafx.controls,javafx.swing -cp bin App client 127.0.0.1 5000
 ```
 
 ## Cấu hình 
