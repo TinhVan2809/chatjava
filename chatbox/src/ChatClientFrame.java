@@ -2970,8 +2970,18 @@ public class ChatClientFrame extends JFrame {
         private JScrollPane messagesScrollPane;
         private final JTextField input = new JTextField();
         private final JButton sendButton = new ModernButton("Gui", ButtonVariant.PRIMARY);
-        private final JButton sendImageButton = new ModernButton("Gui anh", ButtonVariant.GHOST);
-        private final JButton sendFileButton = new ModernButton("Gui file", ButtonVariant.GHOST);
+        private final JButton sendImageButton = new ModernButton("", ButtonVariant.GHOST);
+        private final JButton sendFileButton = new ModernButton("", ButtonVariant.GHOST);
+                private void setButtonIcons() {
+                    // Set icon for sendImageButton
+                    ImageIcon imageIcon = new ImageIcon("lib/send_image.png"); // Path to your image icon
+                    sendImageButton.setIcon(imageIcon);
+                    sendImageButton.setToolTipText("Gửi ảnh");
+                    // Set icon for sendFileButton
+                    ImageIcon fileIcon = new ImageIcon("lib/send_file.png"); // Path to your file icon
+                    sendFileButton.setIcon(fileIcon);
+                    sendFileButton.setToolTipText("Gửi file");
+                }
         private final JButton closeButton = new ModernButton("Dong", ButtonVariant.SECONDARY);
         private final JLabel peerTypingLabel = new JLabel();
 
@@ -3052,6 +3062,7 @@ public class ChatClientFrame extends JFrame {
                 closePrivateChatTab(peerUsername);
             });
 
+            setButtonIcons();
             setEnabled(true);
         }
 
