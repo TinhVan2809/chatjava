@@ -7,15 +7,19 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.Toolkit;
+import java.awt.FlowLayout;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.datatransfer.StringSelection;
 import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.Rectangle;
+import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.event.MouseAdapter;
@@ -34,22 +38,28 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.DefaultListModel;
 import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
@@ -57,6 +67,7 @@ import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
+import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
@@ -64,6 +75,8 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.Border;
 import javax.swing.event.DocumentEvent;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.plaf.basic.BasicTabbedPaneUI;
@@ -426,6 +439,11 @@ public class ChatClientFrame extends JFrame {
     private volatile String currentFullName;
     private volatile String currentUsername;
 
+    // Trang thai Reply cho Chat chung
+    private JPanel groupReplyPanel;
+    private JLabel groupReplyLabel;
+    private String groupReplyContext = null; // Luu text dang duoc reply
+
     private Socket socket;
     private BufferedReader reader;
     private PrintWriter writer;
@@ -712,6 +730,11 @@ public class ChatClientFrame extends JFrame {
 
         JPanel inputPanel = new JPanel(new BorderLayout(8, 8));
         inputPanel.setOpaque(false);
+        
+        // Init panel reply cho chat chung
+        groupReplyPanel = createReplyPreviewPanel(e -> clearGroupReply());
+        inputPanel.add(groupReplyPanel, BorderLayout.NORTH);
+        
         inputPanel.add(inputField, BorderLayout.CENTER);
 
         JPanel actionsPanel = new JPanel();
@@ -731,6 +754,60 @@ public class ChatClientFrame extends JFrame {
         panel.add(bottomPanel, BorderLayout.SOUTH);
 
         return panel;
+    }
+
+    // Tao panel hien thi noi dung dang duoc tra loi (Reply Preview)
+    private JPanel createReplyPreviewPanel(ActionListener onCancel) {
+        JPanel panel = new JPanel(new BorderLayout(8, 0));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(0, 4, 4, 0));
+        panel.setVisible(false); // An mac dinh
+
+        JLabel label = new JLabel();
+        label.setFont(Theme.fontPlain(11));
+        label.setForeground(Theme.MUTED_TEXT);
+        
+        // Ve duong gach doc ben trai de bieu thi quote
+        JLabel border = new JLabel(" ");
+        border.setOpaque(true);
+        border.setBackground(Theme.ACCENT);
+        border.setPreferredSize(new Dimension(3, 0));
+
+        JButton closeBtn = new ModernButton("×", ButtonVariant.GHOST);
+        closeBtn.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
+        closeBtn.setFont(Theme.fontBold(16));
+        closeBtn.addActionListener(onCancel);
+
+        panel.add(border, BorderLayout.WEST);
+        panel.add(label, BorderLayout.CENTER);
+        panel.add(closeBtn, BorderLayout.EAST);
+        
+        // Luu tham chieu label vao ClientProperty hoac field neu can, 
+        // nhung o day ta se gan vao field class (groupReplyLabel) hoac tra ve.
+        // De don gian, ta set truc tiep component con ra ngoai
+        if (this.groupReplyLabel == null) {
+             this.groupReplyLabel = label;
+        }
+        
+        return panel;
+    }
+
+    private void setGroupReply(String senderName, String message) {
+        this.groupReplyContext = "Replying to " + senderName + ": " + message;
+        if (groupReplyLabel != null) {
+            // Gioi han do dai hien thi
+            String preview = message.length() > 50 ? message.substring(0, 50) + "..." : message;
+            groupReplyLabel.setText("<html><b>Đang trả lời " + senderName + ":</b><br>" + preview + "</html>");
+            groupReplyPanel.setVisible(true);
+            inputField.requestFocusInWindow();
+        }
+    }
+
+    private void clearGroupReply() {
+        this.groupReplyContext = null;
+        if (groupReplyPanel != null) {
+            groupReplyPanel.setVisible(false);
+        }
     }
 
     // Tab online: hien thi danh sach nguoi dang online nhan tu server.
@@ -858,6 +935,17 @@ public class ChatClientFrame extends JFrame {
             public void mouseClicked(MouseEvent event) {
                 if (event.getButton() == MouseEvent.BUTTON1 && event.getClickCount() == 2) {
                     openPrivateChatFromSelection();
+                }
+            }
+        });
+
+        chatTabs.addChangeListener(e -> {
+            Component selected = chatTabs.getSelectedComponent();
+            // When a tab is selected, check if it's a private chat and process any unread messages.
+            for (PrivateChatTab tab : privateChatTabs.values()) {
+                if (tab.panel == selected) {
+                    tab.setUnread(false);
+                    tab.processReadReceipts();
                 }
             }
         });
@@ -994,7 +1082,10 @@ public class ChatClientFrame extends JFrame {
 
         PrivateChatTab created = new PrivateChatTab(normalizedUsername, otherDisplayName);
         privateChatTabs.put(normalizedUsername, created);
-        chatTabs.addTab(created.getTabTitle(), created.panel);
+        // Add tab voi tieu de null, sau do set custom component de hien thi badge
+        chatTabs.addTab(null, created.panel);
+        int index = chatTabs.indexOfComponent(created.panel);
+        chatTabs.setTabComponentAt(index, created.tabHeaderPanel);
 
         if (switchToTab) {
             chatTabs.setSelectedComponent(created.panel);
@@ -1266,7 +1357,8 @@ public class ChatClientFrame extends JFrame {
         } else if (side == FxChatView.Side.INCOMING) {
             swingSide = MessageSide.INCOMING;
         }
-        appendTextBubble(chatMessagesPanel, chatMessagesScrollPane, swingSide, metaText, message);
+        // Note: JavaFX view hien tai chua ho tro nut Reply, fallback Swing se co
+        appendTextBubble(chatMessagesPanel, chatMessagesScrollPane, swingSide, metaText, message, null);
     }
 
     private void appendGroupLine(String rawLine) {
@@ -1370,7 +1462,10 @@ public class ChatClientFrame extends JFrame {
         return area;
     }
 
-    private JPanel buildMessageRow(MessageSide side, String metaText, BubblePanel bubble) {
+    // Cap nhat method de nhan vao thong tin reply
+    private JPanel buildMessageRow(MessageSide side, String metaText, JComponent messageContent, 
+                                   String rawMessageContent, String senderName, Runnable onReply, 
+                                   JComponent... extras) {
         MessageRowPanel row = new MessageRowPanel();
         row.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
@@ -1384,10 +1479,87 @@ public class ChatClientFrame extends JFrame {
             stack.add(Box.createVerticalStrut(4));
         }
 
-        bubble.setAlignmentX(side == MessageSide.OUTGOING
+        // Tao container ngang de chua Bubble + Nut Options (3 cham)
+        JPanel bubbleRow = new JPanel(new FlowLayout(
+                side == MessageSide.OUTGOING ? FlowLayout.RIGHT : 
+                side == MessageSide.INCOMING ? FlowLayout.LEFT : FlowLayout.CENTER, 
+                0, 0));
+        bubbleRow.setOpaque(false);
+        
+        // Nut 3 cham (Option Menu)
+        JButton optionsBtn = null;
+        if (side != MessageSide.SYSTEM) {
+            optionsBtn = new ModernButton("⋮", ButtonVariant.GHOST);
+            optionsBtn.setFont(Theme.fontBold(16));
+            optionsBtn.setForeground(Theme.MUTED_TEXT);
+            optionsBtn.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+            optionsBtn.setToolTipText("Tùy chọn");
+            
+            // Tao Popup Menu
+            JPopupMenu popup = new JPopupMenu();
+            
+            // Menu Item: Tra loi
+            JMenuItem replyItem = new JMenuItem("Trả lời");
+            replyItem.addActionListener(e -> {
+                if (onReply != null) onReply.run();
+            });
+            
+            // Menu Item: Copy
+            JMenuItem copyItem = new JMenuItem("Copy");
+            copyItem.addActionListener(e -> {
+                if (rawMessageContent != null) {
+                    StringSelection selection = new StringSelection(rawMessageContent);
+                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, null);
+                }
+            });
+
+            // Menu Item: Xoa (Client side visual only)
+            JMenuItem deleteItem = new JMenuItem("Xóa (ở phía tôi)");
+            deleteItem.addActionListener(e -> {
+                 row.setVisible(false);
+                 row.removeAll();
+            });
+
+            popup.add(replyItem);
+            popup.add(copyItem);
+            popup.addSeparator();
+            popup.add(deleteItem);
+            
+            final JButton btnRef = optionsBtn;
+            optionsBtn.addActionListener(e -> popup.show(btnRef, 0, btnRef.getHeight()));
+        }
+
+        // Sap xep vi tri Bubble va Nut tuy theo Side
+        if (side == MessageSide.OUTGOING) {
+            if (optionsBtn != null) bubbleRow.add(optionsBtn);
+            bubbleRow.add(messageContent);
+        } else {
+            bubbleRow.add(messageContent);
+            if (optionsBtn != null) bubbleRow.add(optionsBtn);
+        }
+
+        // Canh chinh cho stack
+        bubbleRow.setAlignmentX(side == MessageSide.OUTGOING
                 ? Component.RIGHT_ALIGNMENT
                 : side == MessageSide.INCOMING ? Component.LEFT_ALIGNMENT : Component.CENTER_ALIGNMENT);
-        stack.add(bubble);
+        
+        stack.add(bubbleRow);
+
+        if (extras != null) {
+            for (JComponent extra : extras) {
+                if (extra == null) {
+                    continue;
+                }
+                if (side == MessageSide.OUTGOING) {
+                    extra.setAlignmentX(Component.RIGHT_ALIGNMENT);
+                } else if (side == MessageSide.INCOMING) {
+                    extra.setAlignmentX(Component.LEFT_ALIGNMENT);
+                } else {
+                    extra.setAlignmentX(Component.CENTER_ALIGNMENT);
+                }
+                stack.add(extra);
+            }
+        }
 
         if (side == MessageSide.OUTGOING) {
             row.add(stack, BorderLayout.EAST);
@@ -1463,19 +1635,36 @@ public class ChatClientFrame extends JFrame {
         });
     }
 
-    private void appendTextBubble(JPanel listPanel, JScrollPane scrollPane, MessageSide side, String metaText, String message) {
+    private void appendTextBubble(JPanel listPanel, JScrollPane scrollPane, MessageSide side, String metaText, String message,
+            JComponent... extras) {
         String text = message == null ? "" : message.trim();
         if (text.isEmpty() || listPanel == null) {
             return;
         }
 
         Runnable task = () -> {
-            BubblePanel bubble = createBubblePanel(side);
-            bubble.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
-            bubble.setMaximumSize(new Dimension(CHAT_BUBBLE_MAX_WIDTH, Integer.MAX_VALUE));
-            bubble.add(createBubbleTextArea(text, side, 13), BorderLayout.CENTER);
+            JComponent messageContent = parseAndBuildMessageBubble(text, side);
 
-            JPanel row = buildMessageRow(side, metaText, bubble);
+            // Xac dinh ten nguoi gui va action reply
+            String senderName = "Unknown";
+            Runnable replyAction = null;
+            
+            if (metaText != null && !metaText.isBlank()) {
+                 // Meta thuong co dang "[Time] Name" hoac "Name"
+                 senderName = metaText; // Don gian hoa, lay ca string
+            }
+            
+            // Check xem dang o tab rieng hay chung de gan action reply phu hop
+            if (side != MessageSide.SYSTEM) {
+                final String finalName = senderName;
+                replyAction = () -> {
+                    // Mac dinh fallback ve group reply, PrivateTab se override bang cach tu goi buildRow rieng hoac 
+                    // ta se xu ly trong PrivateChatTab.append...
+                    setGroupReply(finalName, text);
+                };
+            }
+
+            JPanel row = buildMessageRow(side, metaText, messageContent, text, senderName, replyAction, extras);
             appendRow(listPanel, scrollPane, row);
         };
 
@@ -1483,6 +1672,51 @@ public class ChatClientFrame extends JFrame {
             task.run();
         } else {
             SwingUtilities.invokeLater(task);
+        }
+    }
+
+    // Ham helper de tao bong bong chat (hoac container reply) cho Swing
+    private JComponent parseAndBuildMessageBubble(String text, MessageSide side) {
+        String startMarker = "RUN_REPLY_BLOCK";
+        String endMarker = "END_REPLY_BLOCK";
+        
+        int start = text.indexOf(startMarker);
+        int end = text.indexOf(endMarker);
+        
+        if (start >= 0 && end > start) {
+            String quote = text.substring(start + startMarker.length(), end).trim();
+            String reply = text.substring(end + endMarker.length()).trim();
+            
+            JPanel container = new JPanel();
+            container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
+            container.setOpaque(false);
+            
+            // Quote Bubble (White background, Gray text)
+            BubblePanel quoteBubble = new BubblePanel(Color.WHITE, new Color(0xD6DCE6), 12); // Radius 12
+            quoteBubble.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+            JTextArea quoteArea = createBubbleTextArea(quote, side, 12);
+            quoteArea.setForeground(Color.GRAY);
+            quoteBubble.add(quoteArea, BorderLayout.CENTER);
+            // Align left relative to the container stack
+            quoteBubble.setAlignmentX(Component.LEFT_ALIGNMENT);
+            
+            // Reply Bubble (Standard style)
+            BubblePanel replyBubble = createBubblePanel(side);
+            replyBubble.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+            replyBubble.add(createBubbleTextArea(reply, side, 13), BorderLayout.CENTER);
+            replyBubble.setAlignmentX(Component.LEFT_ALIGNMENT);
+            
+            container.add(quoteBubble);
+            container.add(Box.createVerticalStrut(4)); // Spacing
+            container.add(replyBubble);
+            
+            return container;
+        } else {
+             // Normal message
+             BubblePanel bubble = createBubblePanel(side);
+             bubble.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+             bubble.add(createBubbleTextArea(text, side, 13), BorderLayout.CENTER);
+             return bubble;
         }
     }
 
@@ -1517,7 +1751,7 @@ public class ChatClientFrame extends JFrame {
             bubble.add(content, BorderLayout.CENTER);
             bubble.setMaximumSize(new Dimension(Math.min(CHAT_BUBBLE_MAX_WIDTH, CHAT_IMAGE_MAX_WIDTH + 64), Integer.MAX_VALUE));
 
-            JPanel row = buildMessageRow(side, metaText, bubble);
+            JPanel row = buildMessageRow(side, metaText, bubble, "[Hình ảnh]", "User", null); // Tam thoi null action cho anh
             appendRow(listPanel, scrollPane, row);
         };
 
@@ -2053,8 +2287,8 @@ public class ChatClientFrame extends JFrame {
                     continue;
                 }
 
-                if ("PM".equals(command.name()) && command.hasFields(3)) {
-                    handleIncomingPrivateMessage(command.field(0), command.field(1), command.field(2));
+                if ("PM".equals(command.name()) && command.hasFields(4)) {
+                    handleIncomingPrivateMessage(command.field(0), command.field(1), command.field(2), command.field(3));
                     continue;
                 }
 
@@ -2083,8 +2317,8 @@ public class ChatClientFrame extends JFrame {
                     continue;
                 }
 
-                if ("PM_SENT".equals(command.name()) && command.hasFields(3)) {
-                    handleOutgoingPrivateMessage(command.field(0), command.field(1), command.field(2));
+                if ("PM_SENT".equals(command.name()) && command.hasFields(4)) {
+                    handleOutgoingPrivateMessage(command.field(0), command.field(1), command.field(2), command.field(3));
                     continue;
                 }
 
@@ -2105,6 +2339,11 @@ public class ChatClientFrame extends JFrame {
                             command.field(2),
                             command.field(3),
                             command.fieldBytes(4));
+                    continue;
+                }
+
+                if ("PM_READ".equals(command.name()) && command.hasFields(2)) {
+                    handlePrivateMessageRead(command.field(0), command.field(1));
                     continue;
                 }
 
@@ -2258,7 +2497,7 @@ public class ChatClientFrame extends JFrame {
     }
 
     // Tin nhan rieng (PM) tu nguoi khac gui toi.
-    private void handleIncomingPrivateMessage(String fromUsername, String fromDisplayName, String message) {
+    private void handleIncomingPrivateMessage(String fromUsername, String fromDisplayName, String messageId, String message) {
         String normalizedUsername = fromUsername == null ? "" : fromUsername.trim().toLowerCase(Locale.ROOT);
         if (normalizedUsername.isEmpty()) {
             appendMessage("[He thong] Tin nhan rieng khong hop le.");
@@ -2272,9 +2511,9 @@ public class ChatClientFrame extends JFrame {
         }
 
         SwingUtilities.invokeLater(() -> {
-            PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, true);
+            PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, false);
             if (tab != null) {
-                tab.appendIncoming(displayName, text);
+                tab.appendIncoming(displayName, messageId, text);
             }
         });
     }
@@ -2306,7 +2545,7 @@ public class ChatClientFrame extends JFrame {
         final long sizeBytes = fileBytes.length;
 
         SwingUtilities.invokeLater(() -> {
-            PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, true);
+            PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, false);
             if (tab != null) {
                 tab.appendIncomingFile(displayName, safeFileName, sizeBytes);
             }
@@ -2349,7 +2588,7 @@ public class ChatClientFrame extends JFrame {
         }
 
         SwingUtilities.invokeLater(() -> {
-            PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, true);
+            PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, false);
             if (tab != null) {
                 tab.appendIncomingImage(displayName, safeFileName, icon);
             }
@@ -2357,7 +2596,7 @@ public class ChatClientFrame extends JFrame {
     }
 
     // Xac nhan tu server: PM cua minh da duoc gui thanh cong.
-    private void handleOutgoingPrivateMessage(String toUsername, String toDisplayName, String message) {
+    private void handleOutgoingPrivateMessage(String toUsername, String toDisplayName, String messageId, String message) {
         String normalizedUsername = toUsername == null ? "" : toUsername.trim().toLowerCase(Locale.ROOT);
         if (normalizedUsername.isEmpty()) {
             return;
@@ -2372,7 +2611,7 @@ public class ChatClientFrame extends JFrame {
         SwingUtilities.invokeLater(() -> {
             PrivateChatTab tab = getOrCreatePrivateChatTab(normalizedUsername, displayName, false);
             if (tab != null) {
-                tab.appendOutgoing(displayName, text);
+                tab.appendOutgoing(displayName, messageId, text);
             }
         });
     }
@@ -2441,6 +2680,22 @@ public class ChatClientFrame extends JFrame {
         });
     }
 
+    // Server thong bao tin nhan cua minh da duoc doc.
+    private void handlePrivateMessageRead(String byUsername, String messageId) {
+        String normalizedUsername = byUsername == null ? "" : byUsername.trim().toLowerCase(Locale.ROOT);
+        if (normalizedUsername.isEmpty() || messageId == null || messageId.isBlank()) {
+            return;
+        }
+
+        SwingUtilities.invokeLater(() -> {
+            // Find the tab corresponding to the user who read the message
+            PrivateChatTab tab = privateChatTabs.get(normalizedUsername);
+            if (tab != null) {
+                tab.markAsRead(messageId);
+            }
+        });
+    }
+
     // Loi khi gui PM (nguoi nhan offline, sai du lieu, ...).
     private void handlePrivateMessageError(String toUsername, String errorMessage) {
         String normalizedUsername = toUsername == null ? "" : toUsername.trim().toLowerCase(Locale.ROOT);
@@ -2475,7 +2730,14 @@ public class ChatClientFrame extends JFrame {
             return;
         }
 
-        sendProtocolMessage("MSG", message);
+        // Neu dang reply, dinh kem context vao tin nhan
+        String finalMessage = message;
+        if (groupReplyContext != null) {
+            finalMessage = "RUN_REPLY_BLOCK\n" + groupReplyContext + "\nEND_REPLY_BLOCK\n" + message;
+            clearGroupReply();
+        }
+
+        sendProtocolMessage("MSG", finalMessage);
         stopGroupTyping(true);
         inputField.setText("");
         inputField.requestFocusInWindow();
@@ -2997,7 +3259,16 @@ public class ChatClientFrame extends JFrame {
     // Tab chat rieng: gui/nhan PM 1-1 voi mot user cu the.
     private final class PrivateChatTab {
         private final String peerUsername;
+        // Custom tab header components
+        private final JPanel tabHeaderPanel;
+        private final JLabel tabTitleLabel;
+        private final JLabel badgeLabel;
         private final JPanel panel = new JPanel(new BorderLayout(12, 12));
+          // Reply components cho Private Chat
+        private final JPanel replyPreviewPanel;
+        private JLabel replyLabel;
+        private String replyContext = null;
+        
         private final JLabel titleLabel = new JLabel();
         private final JPanel messagesPanel = new JPanel();
         private JScrollPane messagesScrollPane;
@@ -3013,12 +3284,28 @@ public class ChatClientFrame extends JFrame {
         private long localTypingLastSentAt;
         private Timer peerTypingTimeoutTimer;
 
+        // Map<messageId, statusLabel> for outgoing messages
+        private final Map<String, JLabel> outgoingMessageStatuses = new HashMap<>();
+        private final List<String> unreadMessageIds = new ArrayList<>();
+
         private String peerDisplayName;
 
         private PrivateChatTab(String peerUsername, String peerDisplayName) {
             this.peerUsername = peerUsername;
-            updatePeerDisplayName(peerDisplayName);
 
+            // Init custom tab header (Ten + Red Dot)
+            tabHeaderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            tabHeaderPanel.setOpaque(false);
+            tabTitleLabel = new JLabel();
+            tabTitleLabel.setFont(Theme.fontBold(13));
+            badgeLabel = new JLabel("●");
+            badgeLabel.setForeground(Theme.DANGER);
+            badgeLabel.setFont(Theme.fontBold(14)); // To hon mot chut de de nhin
+            badgeLabel.setVisible(false);
+            tabHeaderPanel.add(tabTitleLabel);
+            tabHeaderPanel.add(badgeLabel);
+
+            updatePeerDisplayName(peerDisplayName);
             Theme.styleSecondaryLabel(peerTypingLabel);
             peerTypingLabel.setFont(Theme.fontPlain(12));
             peerTypingLabel.setText(" ");
@@ -3035,12 +3322,22 @@ public class ChatClientFrame extends JFrame {
             headerPanel.add(closeButton, BorderLayout.EAST);
             panel.add(headerPanel, BorderLayout.NORTH);
 
+            // Init Reply Panel
+            replyPreviewPanel = createReplyPreviewPanel(e -> clearReply());
+            // Hack: Lay label ra tu panel vua tao (vi createReplyPreviewPanel gan vao this.groupReplyLabel cua outer class)
+            // Ta can custom lai ham createReply hoa set thu cong.
+            // De don gian: ta lay component thu 1 (index 1) la JLabel
+            this.replyLabel = (JLabel) replyPreviewPanel.getComponent(1);
+
             configureMessagesPanel(messagesPanel);
             messagesScrollPane = createScrollPane(messagesPanel, Theme.SURFACE_2);
             panel.add(messagesScrollPane, BorderLayout.CENTER);
 
             JPanel inputPanel = new JPanel(new BorderLayout(8, 8));
             inputPanel.setOpaque(false);
+            
+            inputPanel.add(replyPreviewPanel, BorderLayout.NORTH);
+            
             Theme.styleTextField(input);
             inputPanel.add(input, BorderLayout.CENTER);
 
@@ -3101,6 +3398,7 @@ public class ChatClientFrame extends JFrame {
         private void updatePeerDisplayName(String value) {
             String cleaned = value == null || value.isBlank() ? peerUsername : value.trim();
             peerDisplayName = cleaned;
+            tabTitleLabel.setText(cleaned);
             titleLabel.setText("Chat rieng voi: " + cleaned);
         }
 
@@ -3110,6 +3408,24 @@ public class ChatClientFrame extends JFrame {
             sendImageButton.setEnabled(enabled);
             sendFileButton.setEnabled(enabled);
             closeButton.setEnabled(true);
+        }
+
+        private void setUnread(boolean unread) {
+            badgeLabel.setVisible(unread);
+            tabHeaderPanel.repaint();
+        }
+
+        private void setReply(String displayName, String message) {
+            this.replyContext = "Trả lời " + displayName + ": " + message;
+            String preview = message.length() > 50 ? message.substring(0, 50) + "..." : message;
+            this.replyLabel.setText("<html><b>Đang trả lời " + displayName + ":</b><br>" + preview + "</html>");
+            this.replyPreviewPanel.setVisible(true);
+            this.input.requestFocusInWindow();
+        }
+
+        private void clearReply() {
+            this.replyContext = null;
+            this.replyPreviewPanel.setVisible(false);
         }
 
         private void send() {
@@ -3133,24 +3449,53 @@ public class ChatClientFrame extends JFrame {
                 return;
             }
 
-            sendProtocolMessage("PM", peerUsername, message);
+            // Format tin nhan neu co reply
+            String finalMessage = message;
+            if (replyContext != null) {
+                // Format dong bo voi Group Chat de su dung chung logic parse
+                finalMessage = "RUN_REPLY_BLOCK\n" + replyContext + "\nEND_REPLY_BLOCK\n" + message;
+                clearReply();
+            }
+
+            String messageId = UUID.randomUUID().toString();
+            sendProtocolMessage("PM", peerUsername, messageId, finalMessage);
             stopLocalTyping(true);
             input.setText("");
             input.requestFocusInWindow();
         }
 
-        private void appendIncoming(String fromDisplayName, String message) {
+        private void appendIncoming(String fromDisplayName, String messageId, String message) {
             setPeerTyping(false, null);
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, message);
+            unreadMessageIds.add(messageId);
+            
+            // Custom appendTextBubble call de gan action reply cho tab rieng
+            Runnable onReply = () -> setReply(fromDisplayName, message);
+            
+            appendBubbleWithReply(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, message, fromDisplayName, onReply);
+            
+            if (chatTabs.getSelectedComponent() != this.panel) {
+                setUnread(true);
+            }
+            processReadReceipts();
         }
-
-        private void appendOutgoing(String toDisplayName, String message) {
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, message);
+        
+        private void appendBubbleWithReply(JPanel listPanel, JScrollPane scrollPane, MessageSide side, 
+                                           String metaText, String message, String senderName, Runnable onReply, 
+                                           JComponent... extras) {
+             Runnable task = () -> {
+                JComponent messageContent = parseAndBuildMessageBubble(message, side);
+                JPanel row = buildMessageRow(side, metaText, messageContent, message, senderName, onReply, extras);
+                appendRow(listPanel, scrollPane, row);
+            };
+            if (SwingUtilities.isEventDispatchThread()) task.run(); else SwingUtilities.invokeLater(task);
         }
 
         private void appendIncomingImage(String fromDisplayName, String fileName, ImageIcon icon) {
             setPeerTyping(false, null);
             appendImageBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gửi ảnh: " + fileName, icon);
+            if (chatTabs.getSelectedComponent() != this.panel) {
+                setUnread(true);
+            }
         }
 
         private void appendOutgoingImage(String toDisplayName, String fileName, ImageIcon icon) {
@@ -3160,16 +3505,52 @@ public class ChatClientFrame extends JFrame {
         private void appendIncomingFile(String fromDisplayName, String fileName, long sizeBytes) {
             String suffix = sizeBytes >= 0 ? " (" + formatBytes(sizeBytes) + ")" : "";
             setPeerTyping(false, null);
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gửi file: " + fileName + suffix);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.INCOMING, null, "Gửi file: " + fileName + suffix, null);
+            if (chatTabs.getSelectedComponent() != this.panel) {
+                setUnread(true);
+            }
         }
 
         private void appendOutgoingFile(String toDisplayName, String fileName, long sizeBytes) {
             String suffix = sizeBytes >= 0 ? " (" + formatBytes(sizeBytes) + ")" : "";
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, "Gửi file: " + fileName + suffix);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, "Gửi file: " + fileName + suffix, null);
         }
 
         private void appendSystem(String message) {
-            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.SYSTEM, null, "[Hệ thống] " + message);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.SYSTEM, null, "[Hệ thống] " + message, null);
+        }
+
+        private void appendOutgoing(String toDisplayName, String messageId, String message) {
+            JLabel statusLabel = createStatusLabel("Đã gửi");
+            outgoingMessageStatuses.put(messageId, statusLabel);
+            appendTextBubble(messagesPanel, messagesScrollPane, MessageSide.OUTGOING, null, message, statusLabel); // Outgoing khong can reply chinh minh
+        }
+
+        private JLabel createStatusLabel(String text) {
+            JLabel label = new JLabel(text);
+            label.setFont(Theme.fontPlain(10));
+            label.setForeground(Theme.MUTED_TEXT);
+            label.setBorder(BorderFactory.createEmptyBorder(2, 0, 0, 0));
+            return label;
+        }
+
+        private void markAsRead(String messageId) {
+            JLabel statusLabel = outgoingMessageStatuses.get(messageId);
+            if (statusLabel != null) {
+                statusLabel.setText("Đã xem");
+            }
+        }
+
+        private void processReadReceipts() {
+            if (chatTabs.getSelectedComponent() != this.panel || unreadMessageIds.isEmpty()) {
+                return;
+            }
+
+            // Send a "seen" receipt for all unread messages in this now-active tab.
+            for (String msgId : unreadMessageIds) {
+                sendProtocolMessage("PM_SEEN", peerUsername, msgId);
+            }
+            unreadMessageIds.clear();
         }
 
         private void handleLocalTypingInputChanged() {

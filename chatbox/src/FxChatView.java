@@ -10,6 +10,7 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.effect.DropShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
@@ -43,6 +44,9 @@ public final class FxChatView {
     private static final int DEFAULT_ANIM_MS = 250;
     private static final int DEFAULT_SLIDE_PX = 10;
 
+    private static final String REPLY_MARKER_START = "RUN_REPLY_BLOCK";
+    private static final String REPLY_MARKER_END = "END_REPLY_BLOCK";
+
     private final JFXPanel panel = new JFXPanel();
     private ScrollPane scrollPane;
     private VBox messagesBox;
@@ -75,7 +79,7 @@ public final class FxChatView {
         Platform.runLater(() -> {
             boolean pinned = isPinnedToBottom();
             Node node = buildTextMessage(side, metaText, text);
-            addAnimated(node, pinned, DEFAULT_ANIM_MS, DEFAULT_SLIDE_PX);
+            addAnimated(node, side, pinned, DEFAULT_ANIM_MS, 20);
         });
     }
 
@@ -87,7 +91,7 @@ public final class FxChatView {
         Platform.runLater(() -> {
             boolean pinned = isPinnedToBottom();
             Node node = buildImageMessage(side, metaText, caption, imageBytes, maxWidth, maxHeight);
-            addAnimated(node, pinned, DEFAULT_ANIM_MS, DEFAULT_SLIDE_PX);
+            addAnimated(node, side, pinned, DEFAULT_ANIM_MS, 20);
         });
     }
 
@@ -110,13 +114,19 @@ public final class FxChatView {
         panel.setScene(scene);
     }
 
-    private void addAnimated(Node node, boolean pinned, int durationMs, int slidePx) {
+    private void addAnimated(Node node, Side side, boolean pinned, int durationMs, int slidePx) {
         if (messagesBox == null) {
             return;
         }
 
         node.setOpacity(0);
-        node.setTranslateY(slidePx);
+        if (side == Side.OUTGOING) {
+            node.setTranslateX(slidePx);
+        } else if (side == Side.INCOMING) {
+            node.setTranslateX(-slidePx);
+        } else {
+            node.setTranslateY(slidePx);
+        }
         messagesBox.getChildren().add(node);
 
         if (pinned) {
@@ -128,12 +138,21 @@ public final class FxChatView {
         fade.setToValue(1);
 
         TranslateTransition slide = new TranslateTransition(Duration.millis(durationMs), node);
-        slide.setFromY(slidePx);
-        slide.setToY(0);
+        if (side == Side.OUTGOING) {
+            slide.setFromX(slidePx);
+            slide.setToX(0);
+        } else if (side == Side.INCOMING) {
+            slide.setFromX(-slidePx);
+            slide.setToX(0);
+        } else {
+            slide.setFromY(slidePx);
+            slide.setToY(0);
+        }
 
         ParallelTransition animation = new ParallelTransition(fade, slide);
         animation.setOnFinished(event -> {
             node.setOpacity(1);
+            node.setTranslateX(0);
             node.setTranslateY(0);
             if (pinned) {
                 scrollToBottomSoon();
@@ -168,6 +187,43 @@ public final class FxChatView {
         VBox wrapper = new VBox(4);
         wrapper.setFillWidth(true);
 
+        // Check xem tin nhan co phai la reply khong
+        if (message != null && message.contains(REPLY_MARKER_START)) {
+            int startIdx = message.indexOf(REPLY_MARKER_START);
+            int endIdx = message.indexOf(REPLY_MARKER_END);
+            
+            if (startIdx >= 0 && endIdx > startIdx) {
+                String quoteText = message.substring(startIdx + REPLY_MARKER_START.length(), endIdx).trim();
+                String replyText = message.substring(endIdx + REPLY_MARKER_END.length()).trim();
+                
+                // Build Meta
+                if (metaText != null && !metaText.isBlank()) {
+                    Label metaLabel = new Label(metaText.trim());
+                    metaLabel.setTextFill(Color.web(COLOR_MUTED));
+                    metaLabel.setStyle("-fx-font-size: 11px;");
+                    wrapper.getChildren().add(align(metaLabel, side));
+                }
+
+                // Build Quote Bubble (White, Shadow)
+                Label quoteBubble = new Label(quoteText);
+                quoteBubble.setWrapText(true);
+                quoteBubble.setMaxWidth(BUBBLE_MAX_WIDTH);
+                quoteBubble.setTextFill(Color.web("#374151")); // Dark Gray text
+                quoteBubble.setStyle("-fx-background-color: #FFFFFF; -fx-background-radius: 12; -fx-padding: 8 12 8 12; -fx-font-size: 12px; -fx-font-style: italic;");
+                quoteBubble.setEffect(new DropShadow(5.0, 0.0, 2.0, Color.color(0, 0, 0, 0.1))); // Box shadow nhe
+
+                // Build Reply Bubble (Standard)
+                Label replyBubble = createStyledBubble(replyText, side);
+
+                // Group them trong VBox container de cung align
+                VBox container = new VBox(4, quoteBubble, replyBubble);
+                // Align cac bubble con ben trong container ve phia trai (mac dinh)
+                
+                wrapper.getChildren().add(align(container, side));
+                return wrapper;
+            }
+        }
+
         String meta = metaText == null ? "" : metaText.trim();
         if (!meta.isEmpty()) {
             Label metaLabel = new Label(meta);
@@ -176,14 +232,18 @@ public final class FxChatView {
             wrapper.getChildren().add(align(metaLabel, side));
         }
 
+        Label bubble = createStyledBubble(message, side);
+        wrapper.getChildren().add(align(bubble, side));
+        return wrapper;
+    }
+
+    private Label createStyledBubble(String message, Side side) {
         Label bubble = new Label(message);
         bubble.setWrapText(true);
         bubble.setMaxWidth(BUBBLE_MAX_WIDTH);
         bubble.setTextFill(textColor(side));
         bubble.setStyle(bubbleStyle(side) + " -fx-font-size: 13px;");
-
-        wrapper.getChildren().add(align(bubble, side));
-        return wrapper;
+        return bubble;
     }
 
     private Node buildImageMessage(Side side, String metaText, String caption, byte[] imageBytes, int maxWidth, int maxHeight) {

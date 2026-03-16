@@ -392,8 +392,36 @@ public class ChatServer {
                 return true;
             }
 
-            if ("PM".equals(command.name())) {
+            if ("PM_SEEN".equals(command.name())) {
                 if (!command.hasFields(2)) {
+                    return true; // Ignore malformed command
+                }
+
+                String originalSenderUsername = command.field(0).trim().toLowerCase(Locale.ROOT);
+                String messageId = command.field(1).trim();
+
+                if (originalSenderUsername.isEmpty() || messageId.isEmpty()) {
+                    return true;
+                }
+
+                // Find the original sender's handler to forward the receipt
+                ClientHandler originalSender = clientsByUsername.get(originalSenderUsername);
+                if (originalSender == null || originalSender.account == null) {
+                    return true; // Original sender is offline
+                }
+
+                // Forward the read receipt. The sender of this PM_SEEN command is the one who read it.
+                if (account != null) {
+                    originalSender.send(ChatProtocol.encode(
+                            "PM_READ",
+                            account.username(), // The user who read the message
+                            messageId));
+                }
+                return true;
+            }
+
+            if ("PM".equals(command.name())) {
+                if (!command.hasFields(3)) {
                     send(ChatProtocol.encode("PM_ERROR", "", "Thong tin gui tin nhan rieng chua day du."));
                     return true;
                 }
@@ -404,7 +432,8 @@ public class ChatServer {
                     return true;
                 }
 
-                String message = command.field(1).trim();
+                String messageId = command.field(1).trim();
+                String message = command.field(2).trim();
                 if (message.isEmpty()) {
                     return true;
                 }
@@ -424,8 +453,8 @@ public class ChatServer {
                     return true;
                 }
 
-                recipient.send(ChatProtocol.encode("PM", account.username(), account.displayName(), message));
-                send(ChatProtocol.encode("PM_SENT", recipient.account.username(), recipient.account.displayName(), message));
+                recipient.send(ChatProtocol.encode("PM", account.username(), account.displayName(), messageId, message));
+                send(ChatProtocol.encode("PM_SENT", recipient.account.username(), recipient.account.displayName(), messageId, message));
                 return true;
             }
 
