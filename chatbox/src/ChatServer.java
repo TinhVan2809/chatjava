@@ -6,6 +6,7 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -584,6 +585,28 @@ public class ChatServer {
                         utf8(fileName),
                         utf8(mimeType),
                         imageBytes));
+                return true;
+            }
+
+            if ("UPDATE_AVATAR".equals(command.name())) {
+                if (!command.hasFields(1)) return true;
+                byte[] avatarBytes = command.fieldBytes(0);
+                if (avatarBytes == null || avatarBytes.length == 0 || avatarBytes.length > MAX_IMAGE_BYTES) {
+                    return true;
+                }
+
+                // Luu avatar vao server (de co the load lai sau nay - phan load lai se lam o buoc mo rong)
+                try {
+                    Path avatarPath = Path.of("data", "avatars", account.username() + ".png");
+                    Files.createDirectories(avatarPath.getParent());
+                    Files.write(avatarPath, avatarBytes);
+                } catch (IOException e) {
+                    log("Loi luu avatar cho " + account.username() + ": " + e.getMessage());
+                }
+
+                // Broadcast cho tat ca moi nguoi biet de cap nhat ngay lap tuc
+                String payload = ChatProtocol.encodeBytes("USER_AVATAR", utf8(account.username()), avatarBytes);
+                for (ClientHandler client : clients) client.send(payload);
                 return true;
             }
 

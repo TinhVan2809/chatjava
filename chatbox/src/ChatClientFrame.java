@@ -439,6 +439,8 @@ public class ChatClientFrame extends JFrame {
     private volatile String currentFullName;
     private volatile String currentUsername;
 
+    private ImageIcon defaultAvatarIcon;
+    private final Map<String, ImageIcon> avatarCache = new HashMap<>(); // Cache avatar cua user khac
     // Trang thai Reply cho Chat chung
     private JPanel groupReplyPanel;
     private JLabel groupReplyLabel;
@@ -454,6 +456,7 @@ public class ChatClientFrame extends JFrame {
         this.port = port;
 
         applyThemeDefaults();
+        loadDefaultAvatar();
 
         setTitle("Java Chat Box");
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -465,6 +468,23 @@ public class ChatClientFrame extends JFrame {
         setButtonIcons();
         bindEvents();
         resetToAuthState("Server: " + host + ":" + port, Theme.MUTED_TEXT);
+    }
+
+    private void loadDefaultAvatar() {
+        File f = new File("lib", "user.png");
+        if (!f.exists()) {
+            f = new File("../lib", "user.png");
+        }
+        if (f.exists()) {
+            try {
+                BufferedImage img = ImageIO.read(f);
+                if (img != null) {
+                    defaultAvatarIcon = new ImageIcon(scaleToFit(img, 32, 32));
+                }
+            } catch (IOException e) {
+                // Ignore if cannot read
+            }
+        }
     }
 
     // Ap theme co ban cho cac component duoc khoi tao tu field initializers.
@@ -870,6 +890,20 @@ public class ChatClientFrame extends JFrame {
 
         profileUsernameValue.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        JButton changeAvatarBtn = new ModernButton("Đổi Avatar", ButtonVariant.SECONDARY);
+        changeAvatarBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        changeAvatarBtn.addActionListener(e -> {
+            Path p = promptForImagePath();
+            if (p != null) {
+                new Thread(() -> uploadAvatar(p)).start();
+            }
+        });
+
+        // Them cache avatar cua chinh minh vao cache ban dau neu co
+        if (currentUsername != null && avatarCache.containsKey(currentUsername)) {
+            // Logic update UI preview avatar o day neu can
+        }
+
         card.add(iconLabel);
         card.add(Box.createVerticalStrut(16));
         card.add(lblName);
@@ -879,9 +913,43 @@ public class ChatClientFrame extends JFrame {
         card.add(lblUser);
         card.add(Box.createVerticalStrut(4));
         card.add(profileUsernameValue);
+        card.add(Box.createVerticalStrut(16));
+        card.add(changeAvatarBtn);
 
         panel.add(card);
         return panel;
+    }
+
+    private void uploadAvatar(Path path) {
+        try {
+            byte[] bytes = Files.readAllBytes(path);
+            if (bytes.length > MAX_IMAGE_BYTES) {
+                appendMessage("[He thong] Anh qua lon (>2MB).");
+                return;
+            }
+            // Resize nho lai truoc khi gui de nhe server
+            ImageIcon scaled = createScaledImageIcon(bytes, 64, 64); 
+            // Convert lai sang byte array (đơn giản hóa: gửi ảnh gốc nếu nhỏ, ở đây ta gửi bytes gốc check size)
+            // De toi uu: nen compress lai tu BufferedImage. O day ta gui bytes goc.
+            
+            sendProtocolMessageBytes("UPDATE_AVATAR", bytes);
+            
+        } catch (IOException e) {
+            appendMessage("[He thong] Loi doc file: " + e.getMessage());
+        }
+    }
+
+    private void updateLocalAvatarCache(String username, byte[] data) {
+        try {
+            // Resize ve kich thuoc chuan cua avatar chat (32x32)
+            ImageIcon icon = createScaledImageIcon(data, 32, 32);
+            avatarCache.put(username, icon);
+            if (fxGroupView != null) {
+                fxGroupView.updateUserAvatar(username, data);
+            }
+        } catch (IOException e) {
+            // ignore bad image
+        }
     }
 
     // Tao JScrollPane voi border tron va mau nen dong bo theo theme.
@@ -1344,9 +1412,9 @@ public class ChatClientFrame extends JFrame {
     }
 
     // Append tin nhan vao phong chat chung. Uu tien render bang JavaFX (FxChatView) de co animation.
-    private void appendGroupText(FxChatView.Side side, String metaText, String message) {
+    private void appendGroupText(FxChatView.Side side, String metaText, String message, String username) {
         if (fxGroupView != null) {
-            fxGroupView.appendText(side, metaText, message);
+            fxGroupView.appendText(side, metaText, message, username);
             return;
         }
 
@@ -1360,6 +1428,11 @@ public class ChatClientFrame extends JFrame {
         // Note: JavaFX view hien tai chua ho tro nut Reply, fallback Swing se co
         appendTextBubble(chatMessagesPanel, chatMessagesScrollPane, swingSide, metaText, message, null);
     }
+
+    private void appendGroupText(FxChatView.Side side, String metaText, String message) {
+        appendGroupText(side, metaText, message, null);
+    }
+    
 
     private void appendGroupLine(String rawLine) {
         String line = rawLine == null ? "" : rawLine.trim();
@@ -1398,7 +1471,8 @@ public class ChatClientFrame extends JFrame {
                 boolean outgoing = isCurrentUser(username);
                 FxChatView.Side side = outgoing ? FxChatView.Side.OUTGOING : FxChatView.Side.INCOMING;
                 String meta = outgoing ? formatMessageMeta(time, null) : formatMessageMeta(time, display);
-                appendGroupText(side, meta, message);
+                // Pass username de FxChatView tim avatar
+                appendGroupText(side, meta, message, username);
                 return;
             }
         }
@@ -1564,7 +1638,28 @@ public class ChatClientFrame extends JFrame {
         if (side == MessageSide.OUTGOING) {
             row.add(stack, BorderLayout.EAST);
         } else if (side == MessageSide.INCOMING) {
-            row.add(stack, BorderLayout.WEST);
+            JPanel container = new JPanel(new BorderLayout());
+            container.setOpaque(false);
+
+            ImageIcon avatarToUse = defaultAvatarIcon;
+            
+            // Thu lay avatar tu cache dua tren senderName (thuong la "Ten (username)")
+            // Hoac neu senderName chinh la username (trong PrivateChatTab)
+            String userKey = extractUsernameFromDisplayName(senderName);
+            if (userKey == null) userKey = senderName; // Fallback cho private chat
+            
+            if (userKey != null && avatarCache.containsKey(userKey.toLowerCase())) {
+                avatarToUse = avatarCache.get(userKey.toLowerCase());
+            }
+
+            if (avatarToUse != null) {
+                JLabel avatarLabel = new JLabel(avatarToUse);
+                avatarLabel.setVerticalAlignment(SwingConstants.TOP);
+                avatarLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 8));
+                container.add(avatarLabel, BorderLayout.WEST);
+            }
+            container.add(stack, BorderLayout.CENTER);
+            row.add(container, BorderLayout.WEST);
         } else {
             row.add(stack, BorderLayout.CENTER);
         }
@@ -1572,12 +1667,12 @@ public class ChatClientFrame extends JFrame {
         return row;
     }
 
-    private void appendRow(JPanel listPanel, JScrollPane scrollPane, JPanel row) {
+    private void appendRow(JPanel listPanel, JScrollPane scrollPane, JPanel row, boolean forceScroll) {
         if (listPanel == null || row == null) {
             return;
         }
 
-        boolean pinnedToBottom = isScrollNearBottom(scrollPane);
+        boolean pinnedToBottom = forceScroll || isScrollNearBottom(scrollPane);
 
         AnimatedRowPanel animated = null;
         Component toAdd = row;
@@ -1643,6 +1738,7 @@ public class ChatClientFrame extends JFrame {
         }
 
         Runnable task = () -> {
+            boolean forceScroll = (side == MessageSide.OUTGOING);
             JComponent messageContent = parseAndBuildMessageBubble(text, side);
 
             // Xac dinh ten nguoi gui va action reply
@@ -1665,7 +1761,7 @@ public class ChatClientFrame extends JFrame {
             }
 
             JPanel row = buildMessageRow(side, metaText, messageContent, text, senderName, replyAction, extras);
-            appendRow(listPanel, scrollPane, row);
+            appendRow(listPanel, scrollPane, row, forceScroll);
         };
 
         if (SwingUtilities.isEventDispatchThread()) {
@@ -1727,6 +1823,7 @@ public class ChatClientFrame extends JFrame {
         }
 
         Runnable task = () -> {
+            boolean forceScroll = (side == MessageSide.OUTGOING);
             BubblePanel bubble = createBubblePanel(side);
             bubble.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
 
@@ -1752,7 +1849,7 @@ public class ChatClientFrame extends JFrame {
             bubble.setMaximumSize(new Dimension(Math.min(CHAT_BUBBLE_MAX_WIDTH, CHAT_IMAGE_MAX_WIDTH + 64), Integer.MAX_VALUE));
 
             JPanel row = buildMessageRow(side, metaText, bubble, "[Hình ảnh]", "User", null); // Tam thoi null action cho anh
-            appendRow(listPanel, scrollPane, row);
+            appendRow(listPanel, scrollPane, row, forceScroll);
         };
 
         if (SwingUtilities.isEventDispatchThread()) {
@@ -2360,6 +2457,11 @@ public class ChatClientFrame extends JFrame {
                 if ("INFO".equals(command.name()) && command.hasFields(1)) {
                     appendMessage("[He thong] " + command.field(0));
                 }
+                
+                if ("USER_AVATAR".equals(command.name()) && command.hasFields(2)) {
+                    updateLocalAvatarCache(command.field(0), command.fieldBytes(1));
+                    continue;
+                }
             }
         } catch (IOException ex) {
             if (authenticated && !manualDisconnect) {
@@ -2435,7 +2537,8 @@ public class ChatClientFrame extends JFrame {
                     "Gui anh: " + safeFileName,
                     imageBytes,
                     CHAT_IMAGE_MAX_WIDTH,
-                    CHAT_IMAGE_MAX_HEIGHT);
+                    CHAT_IMAGE_MAX_HEIGHT,
+                    normalizedUsername);
             return;
         }
 
@@ -2488,11 +2591,11 @@ public class ChatClientFrame extends JFrame {
         clearGroupTypingUser(normalizedFrom);
         String messageText = "Gui file: " + safeFileName + " (" + sizeText + ")";
         if (fromSelf) {
-            appendGroupText(FxChatView.Side.OUTGOING, formatMessageMeta(safeTime, null), messageText);
+            appendGroupText(FxChatView.Side.OUTGOING, formatMessageMeta(safeTime, null), messageText, normalizedFrom);
             return;
         }
 
-        appendGroupText(FxChatView.Side.INCOMING, formatMessageMeta(safeTime, displayName), messageText);
+        appendGroupText(FxChatView.Side.INCOMING, formatMessageMeta(safeTime, displayName), messageText, normalizedFrom);
         promptToSaveReceivedFile(displayName, safeFileName, fileBytes);
     }
 
@@ -3483,9 +3586,10 @@ public class ChatClientFrame extends JFrame {
                                            String metaText, String message, String senderName, Runnable onReply, 
                                            JComponent... extras) {
              Runnable task = () -> {
+                boolean forceScroll = (side == MessageSide.OUTGOING);
                 JComponent messageContent = parseAndBuildMessageBubble(message, side);
                 JPanel row = buildMessageRow(side, metaText, messageContent, message, senderName, onReply, extras);
-                appendRow(listPanel, scrollPane, row);
+                appendRow(listPanel, scrollPane, row, forceScroll);
             };
             if (SwingUtilities.isEventDispatchThread()) task.run(); else SwingUtilities.invokeLater(task);
         }

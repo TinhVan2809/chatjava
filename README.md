@@ -22,7 +22,7 @@ javac --module-path C:/javafx-sdk-21.0.10/lib --add-modules javafx.controls,java
 
 ```powershell || terminal
 cd chatbox
-java -cp bin App server 5000
+ java -cp bin App server 5000
 ```
 
 ## Run client

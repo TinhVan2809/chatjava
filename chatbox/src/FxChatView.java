@@ -6,6 +6,8 @@ import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import java.util.Map;
+import java.util.HashMap;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
@@ -19,6 +21,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.util.Duration;
 
 // JavaFX message list view embedded into Swing via JFXPanel.
@@ -47,6 +50,8 @@ public final class FxChatView {
     private static final String REPLY_MARKER_START = "RUN_REPLY_BLOCK";
     private static final String REPLY_MARKER_END = "END_REPLY_BLOCK";
 
+    private Image userAvatar;
+    private final Map<String, Image> userAvatarCache = new HashMap<>();
     private final JFXPanel panel = new JFXPanel();
     private ScrollPane scrollPane;
     private VBox messagesBox;
@@ -70,34 +75,57 @@ public final class FxChatView {
         });
     }
 
-    public void appendText(Side side, String metaText, String message) {
+    public void updateUserAvatar(String username, byte[] data) {
+        Platform.runLater(() -> {
+            try {
+                userAvatarCache.put(username.toLowerCase(), new Image(new ByteArrayInputStream(data)));
+            } catch (Exception e) {
+                // ignore
+            }
+        });
+    }
+
+    public void appendText(Side side, String metaText, String message, String username) {
         String text = message == null ? "" : message.trim();
         if (text.isEmpty()) {
             return;
         }
 
         Platform.runLater(() -> {
-            boolean pinned = isPinnedToBottom();
+            boolean pinned = isPinnedToBottom() || side == Side.OUTGOING;
             Node node = buildTextMessage(side, metaText, text);
-            addAnimated(node, side, pinned, DEFAULT_ANIM_MS, 20);
+            addAnimated(node, side, username, pinned, DEFAULT_ANIM_MS, 20);
         });
     }
+    
+    public void appendText(Side side, String metaText, String message) {
+        appendText(side, metaText, message, null);
+    }
 
-    public void appendImage(Side side, String metaText, String caption, byte[] imageBytes, int maxWidth, int maxHeight) {
+    public void appendImage(Side side, String metaText, String caption, byte[] imageBytes, int maxWidth, int maxHeight, String username) {
         if (imageBytes == null || imageBytes.length == 0) {
             return;
         }
 
         Platform.runLater(() -> {
-            boolean pinned = isPinnedToBottom();
+            boolean pinned = isPinnedToBottom() || side == Side.OUTGOING;
             Node node = buildImageMessage(side, metaText, caption, imageBytes, maxWidth, maxHeight);
-            addAnimated(node, side, pinned, DEFAULT_ANIM_MS, 20);
+            addAnimated(node, side, username, pinned, DEFAULT_ANIM_MS, 20);
         });
     }
 
     private void initScene() {
         messagesBox = new VBox(8);
         messagesBox.setPadding(new Insets(12, 12, 12, 12));
+
+        try {
+            java.io.File f = new java.io.File("/lib/user.png");
+            if (!f.exists()) f = new java.io.File("../lib/user.png");
+            if (f.exists()) {
+                userAvatar = new Image(f.toURI().toString());
+            }
+        } catch (Exception ignored) {
+        }
 
         scrollPane = new ScrollPane(messagesBox);
         scrollPane.setFitToWidth(true);
@@ -114,7 +142,7 @@ public final class FxChatView {
         panel.setScene(scene);
     }
 
-    private void addAnimated(Node node, Side side, boolean pinned, int durationMs, int slidePx) {
+    private void addAnimated(Node node, Side side, String username, boolean pinned, int durationMs, int slidePx) {
         if (messagesBox == null) {
             return;
         }
@@ -127,7 +155,9 @@ public final class FxChatView {
         } else {
             node.setTranslateY(slidePx);
         }
-        messagesBox.getChildren().add(node);
+        
+        // Align with username pass vao
+        messagesBox.getChildren().add(align(node, side, username));
 
         if (pinned) {
             scrollToBottomSoon();
@@ -176,11 +206,14 @@ public final class FxChatView {
 
         double contentHeight = messagesBox.getBoundsInLocal().getHeight();
         double viewportHeight = scrollPane.getViewportBounds().getHeight();
-        if (contentHeight <= viewportHeight + 2) {
+        
+        if (contentHeight <= viewportHeight) {
             return true;
         }
 
-        return scrollPane.getVvalue() >= 0.97;
+        // Tinh khoang cach tu day bang pixel (nguong 30px)
+        double pixelsFromBottom = (1.0 - scrollPane.getVvalue()) * (contentHeight - viewportHeight);
+        return pixelsFromBottom < 30.0;
     }
 
     private Node buildTextMessage(Side side, String metaText, String message) {
@@ -201,7 +234,7 @@ public final class FxChatView {
                     Label metaLabel = new Label(metaText.trim());
                     metaLabel.setTextFill(Color.web(COLOR_MUTED));
                     metaLabel.setStyle("-fx-font-size: 11px;");
-                    wrapper.getChildren().add(align(metaLabel, side));
+                    wrapper.getChildren().add(metaLabel); // Meta nam trong wrapper, wrapper duoc align ben ngoai
                 }
 
                 // Build Quote Bubble (White, Shadow)
@@ -219,7 +252,7 @@ public final class FxChatView {
                 VBox container = new VBox(4, quoteBubble, replyBubble);
                 // Align cac bubble con ben trong container ve phia trai (mac dinh)
                 
-                wrapper.getChildren().add(align(container, side));
+                wrapper.getChildren().add(container);
                 return wrapper;
             }
         }
@@ -229,11 +262,11 @@ public final class FxChatView {
             Label metaLabel = new Label(meta);
             metaLabel.setTextFill(Color.web(COLOR_MUTED));
             metaLabel.setStyle("-fx-font-size: 11px;");
-            wrapper.getChildren().add(align(metaLabel, side));
+            wrapper.getChildren().add(metaLabel);
         }
 
         Label bubble = createStyledBubble(message, side);
-        wrapper.getChildren().add(align(bubble, side));
+        wrapper.getChildren().add(bubble);
         return wrapper;
     }
 
@@ -255,7 +288,7 @@ public final class FxChatView {
             Label metaLabel = new Label(meta);
             metaLabel.setTextFill(Color.web(COLOR_MUTED));
             metaLabel.setStyle("-fx-font-size: 11px;");
-            wrapper.getChildren().add(align(metaLabel, side));
+            wrapper.getChildren().add(metaLabel);
         }
 
         VBox bubble = new VBox(8);
@@ -287,11 +320,11 @@ public final class FxChatView {
             bubble.getChildren().add(view);
         }
 
-        wrapper.getChildren().add(align(bubble, side));
+        wrapper.getChildren().add(bubble);
         return wrapper;
     }
 
-    private HBox align(Node node, Side side) {
+    private HBox align(Node node, Side side, String username) {
         HBox row = new HBox();
         row.setFillHeight(true);
 
@@ -309,6 +342,20 @@ public final class FxChatView {
             row.getChildren().addAll(spacer, node);
         } else {
             row.setAlignment(Pos.TOP_LEFT);
+            if (side == Side.INCOMING) {
+                Image avatarToUse = userAvatar;
+                // Check cache
+                if (username != null && userAvatarCache.containsKey(username.toLowerCase())) {
+                    avatarToUse = userAvatarCache.get(username.toLowerCase());
+                }
+                
+                ImageView iv = new ImageView(avatarToUse);
+                iv.setFitWidth(32);
+                iv.setFitHeight(32);
+                iv.setClip(new Circle(16, 16, 16));
+                HBox.setMargin(iv, new Insets(0, 8, 0, 0));
+                row.getChildren().add(iv);
+            }
             row.getChildren().addAll(node, spacer);
         }
 
