@@ -18,6 +18,7 @@ import models.ClientSession;
 
 public final class ChatClientService {
     private final ClientSession session;
+    private final Object sendLock = new Object();
     private volatile boolean manualDisconnect;
     private volatile ChatClientListener listener;
 
@@ -52,7 +53,7 @@ public final class ChatClientService {
     public void sendGroupMessage(String text) {
         String safeText = text == null ? "" : text.trim();
         if (!safeText.isEmpty()) {
-            session.getWriter().println(ChatProtocol.encode("MSG", safeText));
+            sendLine(ChatProtocol.encode("MSG", safeText));
         }
     }
 
@@ -60,7 +61,7 @@ public final class ChatClientService {
         String safeUsername = normalizeUsername(toUsername);
         String safeMessage = text == null ? "" : text.trim();
         if (!safeUsername.isEmpty() && !safeMessage.isEmpty()) {
-            session.getWriter().println(ChatProtocol.encode("PM", safeUsername, messageId, safeMessage));
+            sendLine(ChatProtocol.encode("PM", safeUsername, messageId, safeMessage));
         }
     }
 
@@ -104,18 +105,18 @@ public final class ChatClientService {
         String safeUsername = normalizeUsername(originalSenderUsername);
         String safeMessageId = messageId == null ? "" : messageId.trim();
         if (!safeUsername.isEmpty() && !safeMessageId.isEmpty()) {
-            session.getWriter().println(ChatProtocol.encode("PM_SEEN", safeUsername, safeMessageId));
+            sendLine(ChatProtocol.encode("PM_SEEN", safeUsername, safeMessageId));
         }
     }
 
     public void sendGroupTyping(boolean typing) {
-        session.getWriter().println(ChatProtocol.encode("TYPING", typing ? "1" : "0"));
+        sendLine(ChatProtocol.encode("TYPING", typing ? "1" : "0"));
     }
 
     public void sendPrivateTyping(String toUsername, boolean typing) {
         String safeUsername = normalizeUsername(toUsername);
         if (!safeUsername.isEmpty()) {
-            session.getWriter().println(ChatProtocol.encode("PM_TYPING", safeUsername, typing ? "1" : "0"));
+            sendLine(ChatProtocol.encode("PM_TYPING", safeUsername, typing ? "1" : "0"));
         }
     }
 
@@ -124,13 +125,60 @@ public final class ChatClientService {
             return;
         }
 
-        session.getWriter().println(ChatProtocol.encodeBytes("UPDATE_AVATAR", avatarBytes));
+        sendLine(ChatProtocol.encodeBytes("UPDATE_AVATAR", avatarBytes));
+    }
+
+    public void sendPrivateCallInvite(String toUsername, String callId) {
+        String safeUsername = normalizeUsername(toUsername);
+        String safeCallId = callId == null ? "" : callId.trim();
+        if (!safeUsername.isEmpty() && !safeCallId.isEmpty()) {
+            sendLine(ChatProtocol.encode("CALL_INVITE", safeUsername, safeCallId));
+        }
+    }
+
+    public void sendPrivateCallAccept(String toUsername, String callId) {
+        String safeUsername = normalizeUsername(toUsername);
+        String safeCallId = callId == null ? "" : callId.trim();
+        if (!safeUsername.isEmpty() && !safeCallId.isEmpty()) {
+            sendLine(ChatProtocol.encode("CALL_ACCEPT", safeUsername, safeCallId));
+        }
+    }
+
+    public void sendPrivateCallDecline(String toUsername, String callId, String reason) {
+        String safeUsername = normalizeUsername(toUsername);
+        String safeCallId = callId == null ? "" : callId.trim();
+        String safeReason = reason == null ? "" : reason.trim();
+        if (!safeUsername.isEmpty() && !safeCallId.isEmpty()) {
+            sendLine(ChatProtocol.encode("CALL_DECLINE", safeUsername, safeCallId, safeReason));
+        }
+    }
+
+    public void sendPrivateCallEnd(String toUsername, String callId) {
+        String safeUsername = normalizeUsername(toUsername);
+        String safeCallId = callId == null ? "" : callId.trim();
+        if (!safeUsername.isEmpty() && !safeCallId.isEmpty()) {
+            sendLine(ChatProtocol.encode("CALL_END", safeUsername, safeCallId));
+        }
+    }
+
+    public void sendPrivateCallAudio(String toUsername, String callId, byte[] audioBytes) {
+        String safeUsername = normalizeUsername(toUsername);
+        String safeCallId = callId == null ? "" : callId.trim();
+        if (safeUsername.isEmpty() || safeCallId.isEmpty() || audioBytes == null || audioBytes.length == 0) {
+            return;
+        }
+
+        sendLine(ChatProtocol.encodeBytes(
+                "CALL_AUDIO",
+                utf8(safeUsername),
+                utf8(safeCallId),
+                audioBytes));
     }
 
     public void disconnect() {
         manualDisconnect = true;
         try {
-            session.getWriter().println(ChatProtocol.encode("QUIT"));
+            sendLine(ChatProtocol.encode("QUIT"));
         } catch (Exception ignored) {
         }
         session.closeQuietly();
@@ -293,6 +341,54 @@ public final class ChatClientService {
                             command.fieldBytes(1)));
                 }
             }
+            case "CALL_INVITE" -> {
+                if (command.hasFields(3)) {
+                    dispatch(listener -> listener.onPrivateCallInvite(
+                            normalizeUsername(command.field(0)),
+                            command.field(1),
+                            command.field(2)));
+                }
+            }
+            case "CALL_RINGING" -> {
+                if (command.hasFields(3)) {
+                    dispatch(listener -> listener.onPrivateCallRinging(
+                            normalizeUsername(command.field(0)),
+                            command.field(1),
+                            command.field(2)));
+                }
+            }
+            case "CALL_ACCEPT" -> {
+                if (command.hasFields(3)) {
+                    dispatch(listener -> listener.onPrivateCallAccepted(
+                            normalizeUsername(command.field(0)),
+                            command.field(1),
+                            command.field(2)));
+                }
+            }
+            case "CALL_DECLINE" -> {
+                if (command.hasFields(4)) {
+                    dispatch(listener -> listener.onPrivateCallDeclined(
+                            normalizeUsername(command.field(0)),
+                            command.field(1),
+                            command.field(2),
+                            command.field(3)));
+                }
+            }
+            case "CALL_END" -> {
+                if (command.hasFields(2)) {
+                    dispatch(listener -> listener.onPrivateCallEnded(
+                            normalizeUsername(command.field(0)),
+                            command.field(1)));
+                }
+            }
+            case "CALL_AUDIO" -> {
+                if (command.hasFields(3)) {
+                    dispatchDirect(listener -> listener.onPrivateCallAudio(
+                            normalizeUsername(command.field(0)),
+                            command.field(1),
+                            command.fieldBytes(2)));
+                }
+            }
             default -> {
             }
         }
@@ -309,6 +405,13 @@ public final class ChatClientService {
 
     private void dispatchConnectionClosed(String message) {
         dispatch(listener -> listener.onConnectionClosed(message));
+    }
+
+    private void dispatchDirect(java.util.function.Consumer<ChatClientListener> action) {
+        ChatClientListener currentListener = listener;
+        if (currentListener != null) {
+            action.accept(currentListener);
+        }
     }
 
     private static ClientSession authenticate(String mode, String host, int port, String fullName, String username,
@@ -370,7 +473,7 @@ public final class ChatClientService {
             return;
         }
 
-        session.getWriter().println(ChatProtocol.encodeBytes(
+        sendLine(ChatProtocol.encodeBytes(
                 command,
                 utf8(fileName),
                 utf8(mimeType),
@@ -379,6 +482,16 @@ public final class ChatClientService {
 
     private static byte[] utf8(String value) {
         return (value == null ? "" : value.trim()).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private void sendLine(String line) {
+        if (line == null || line.isBlank()) {
+            return;
+        }
+
+        synchronized (sendLock) {
+            session.getWriter().println(line);
+        }
     }
 
     private static long parseSize(String value) {

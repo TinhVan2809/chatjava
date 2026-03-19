@@ -35,5 +35,17 @@ public interface ChatClientListener {
 
     void onUserAvatarUpdated(String username, byte[] avatarBytes);
 
+    void onPrivateCallInvite(String fromUsername, String fromDisplayName, String callId);
+
+    void onPrivateCallRinging(String fromUsername, String fromDisplayName, String callId);
+
+    void onPrivateCallAccepted(String fromUsername, String fromDisplayName, String callId);
+
+    void onPrivateCallDeclined(String fromUsername, String fromDisplayName, String callId, String reason);
+
+    void onPrivateCallEnded(String fromUsername, String callId);
+
+    void onPrivateCallAudio(String fromUsername, String callId, byte[] audioBytes);
+
     void onConnectionClosed(String message);
 }

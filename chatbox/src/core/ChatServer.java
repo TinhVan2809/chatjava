@@ -35,6 +35,8 @@ public class ChatServer {
     private final Set<String> onlineUsers = ConcurrentHashMap.newKeySet();
     // Map username -> handler de gui tin nhan rieng (PM) nhanh.
     private final ConcurrentHashMap<String, ClientHandler> clientsByUsername = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> activeCallPeers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> activeCallIds = new ConcurrentHashMap<>();
     private final ExecutorService clientPool = Executors.newCachedThreadPool();
 
     // Khoi tao server va nap UserStore de dang ky/dang nhap.
@@ -240,9 +242,52 @@ public class ChatServer {
         System.out.println(message);
     }
 
+    private void startActiveCall(String callerUsername, String calleeUsername, String callId) {
+        if (callerUsername == null || calleeUsername == null || callId == null) {
+            return;
+        }
+
+        activeCallPeers.put(callerUsername, calleeUsername);
+        activeCallPeers.put(calleeUsername, callerUsername);
+        activeCallIds.put(callerUsername, callId);
+        activeCallIds.put(calleeUsername, callId);
+    }
+
+    private void clearActiveCall(String username) {
+        String safeUsername = username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
+        if (safeUsername.isEmpty()) {
+            return;
+        }
+
+        String peerUsername = activeCallPeers.remove(safeUsername);
+        String callId = activeCallIds.remove(safeUsername);
+        if (peerUsername == null || peerUsername.isBlank()) {
+            return;
+        }
+
+        activeCallPeers.remove(peerUsername, safeUsername);
+        String peerCallId = activeCallIds.get(peerUsername);
+        if (callId != null && callId.equals(peerCallId)) {
+            activeCallIds.remove(peerUsername, callId);
+        }
+    }
+
+    private boolean isMatchingActiveCall(String username, String peerUsername, String callId) {
+        String safeUsername = username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
+        String safePeerUsername = peerUsername == null ? "" : peerUsername.trim().toLowerCase(Locale.ROOT);
+        String safeCallId = callId == null ? "" : callId.trim();
+        if (safeUsername.isEmpty() || safePeerUsername.isEmpty() || safeCallId.isEmpty()) {
+            return false;
+        }
+
+        return safePeerUsername.equals(activeCallPeers.get(safeUsername))
+                && safeCallId.equals(activeCallIds.get(safeUsername));
+    }
+
     // Handler 1 ket noi socket: auth truoc, sau do moi nhan/gui tin nhan chat.
     private final class ClientHandler implements Runnable {
         private final Socket socket;
+        private final Object sendLock = new Object();
         private PrintWriter writer;
         private UserStore.UserAccount account;
         private boolean authenticated;
@@ -691,6 +736,169 @@ public class ChatServer {
                 return true;
             }
 
+            if ("CALL_INVITE".equals(command.name())) {
+                if (!command.hasFields(2) || account == null) {
+                    return true;
+                }
+
+                String toUsername = command.field(0).trim().toLowerCase(Locale.ROOT);
+                String callId = command.field(1).trim();
+                if (toUsername.isEmpty() || callId.isEmpty() || toUsername.equals(account.username())) {
+                    return true;
+                }
+
+                ClientHandler recipient = clientsByUsername.get(toUsername);
+                if (recipient == null || recipient.account == null) {
+                    send(ChatProtocol.encode(
+                            "CALL_DECLINE",
+                            toUsername,
+                            toUsername,
+                            callId,
+                            "Nguoi nhan hien dang offline."));
+                    return true;
+                }
+
+                if (activeCallPeers.containsKey(account.username()) || activeCallPeers.containsKey(toUsername)) {
+                    send(ChatProtocol.encode(
+                            "CALL_DECLINE",
+                            recipient.account.username(),
+                            recipient.account.displayName(),
+                            callId,
+                            "Nguoi nhan dang ban."));
+                    return true;
+                }
+
+                recipient.send(ChatProtocol.encode(
+                        "CALL_INVITE",
+                        account.username(),
+                        account.displayName(),
+                        callId));
+                send(ChatProtocol.encode(
+                        "CALL_RINGING",
+                        recipient.account.username(),
+                        recipient.account.displayName(),
+                        callId));
+                return true;
+            }
+
+            if ("CALL_ACCEPT".equals(command.name())) {
+                if (!command.hasFields(2) || account == null) {
+                    return true;
+                }
+
+                String toUsername = command.field(0).trim().toLowerCase(Locale.ROOT);
+                String callId = command.field(1).trim();
+                if (toUsername.isEmpty() || callId.isEmpty() || toUsername.equals(account.username())) {
+                    return true;
+                }
+
+                ClientHandler caller = clientsByUsername.get(toUsername);
+                if (caller == null || caller.account == null) {
+                    send(ChatProtocol.encode(
+                            "CALL_DECLINE",
+                            toUsername,
+                            toUsername,
+                            callId,
+                            "Nguoi goi da offline."));
+                    return true;
+                }
+
+                if ((activeCallPeers.containsKey(account.username()) && !toUsername.equals(activeCallPeers.get(account.username())))
+                        || (activeCallPeers.containsKey(toUsername) && !account.username().equals(activeCallPeers.get(toUsername)))) {
+                    send(ChatProtocol.encode(
+                            "CALL_DECLINE",
+                            caller.account.username(),
+                            caller.account.displayName(),
+                            callId,
+                            "Cuoc goi nay khong con kha dung."));
+                    return true;
+                }
+
+                startActiveCall(account.username(), toUsername, callId);
+                caller.send(ChatProtocol.encode(
+                        "CALL_ACCEPT",
+                        account.username(),
+                        account.displayName(),
+                        callId));
+                return true;
+            }
+
+            if ("CALL_DECLINE".equals(command.name())) {
+                if (!command.hasFields(3) || account == null) {
+                    return true;
+                }
+
+                String toUsername = command.field(0).trim().toLowerCase(Locale.ROOT);
+                String callId = command.field(1).trim();
+                String reason = command.field(2).trim();
+                if (toUsername.isEmpty() || callId.isEmpty()) {
+                    return true;
+                }
+
+                ClientHandler caller = clientsByUsername.get(toUsername);
+                if (caller != null && caller.account != null) {
+                    caller.send(ChatProtocol.encode(
+                            "CALL_DECLINE",
+                            account.username(),
+                            account.displayName(),
+                            callId,
+                            reason));
+                }
+                return true;
+            }
+
+            if ("CALL_END".equals(command.name())) {
+                if (!command.hasFields(2) || account == null) {
+                    return true;
+                }
+
+                String toUsername = command.field(0).trim().toLowerCase(Locale.ROOT);
+                String callId = command.field(1).trim();
+                if (toUsername.isEmpty() || callId.isEmpty()) {
+                    return true;
+                }
+
+                clearActiveCall(account.username());
+                ClientHandler peer = clientsByUsername.get(toUsername);
+                if (peer != null && peer.account != null) {
+                    peer.send(ChatProtocol.encode(
+                            "CALL_END",
+                            account.username(),
+                            callId));
+                }
+                return true;
+            }
+
+            if ("CALL_AUDIO".equals(command.name())) {
+                if (!command.hasFields(3) || account == null) {
+                    return true;
+                }
+
+                String toUsername = command.field(0).trim().toLowerCase(Locale.ROOT);
+                String callId = command.field(1).trim();
+                byte[] audioBytes = command.fieldBytes(2);
+                if (toUsername.isEmpty() || callId.isEmpty() || audioBytes == null || audioBytes.length == 0) {
+                    return true;
+                }
+
+                if (!isMatchingActiveCall(account.username(), toUsername, callId)) {
+                    return true;
+                }
+
+                ClientHandler peer = clientsByUsername.get(toUsername);
+                if (peer == null || peer.account == null) {
+                    clearActiveCall(account.username());
+                    return true;
+                }
+
+                peer.send(ChatProtocol.encodeBytes(
+                        "CALL_AUDIO",
+                        utf8(account.username()),
+                        utf8(callId),
+                        audioBytes));
+                return true;
+            }
+
             if ("QUIT".equals(command.name())) {
                 return false;
             }
@@ -703,7 +911,9 @@ public class ChatServer {
         private void send(String message) {
             PrintWriter currentWriter = writer;
             if (currentWriter != null) {
-                currentWriter.println(message);
+                synchronized (sendLock) {
+                    currentWriter.println(message);
+                }
             }
         }
 
@@ -712,6 +922,15 @@ public class ChatServer {
             clients.remove(this);
 
             if (account != null && onlineUsers.remove(account.username())) {
+                String peerUsername = activeCallPeers.get(account.username());
+                String callId = activeCallIds.get(account.username());
+                clearActiveCall(account.username());
+                if (peerUsername != null && !peerUsername.isBlank() && callId != null && !callId.isBlank()) {
+                    ClientHandler peer = clientsByUsername.get(peerUsername);
+                    if (peer != null && peer.account != null) {
+                        peer.send(ChatProtocol.encode("CALL_END", account.username(), callId));
+                    }
+                }
                 clientsByUsername.remove(account.username(), this);
                 broadcast(formatSystemMessage(account.displayName() + " da roi phong chat."));
                 broadcastOnlineUsers();

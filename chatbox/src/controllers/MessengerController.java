@@ -37,11 +37,16 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
@@ -49,6 +54,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.SVGPath;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -57,6 +63,7 @@ import javafx.util.Duration;
 import models.ClientSession;
 import models.Conversation;
 import models.Message;
+import services.AudioCallManager;
 import services.ChatClientListener;
 import services.ChatClientService;
 import views.cells.ConversationListCell;
@@ -69,6 +76,12 @@ public class MessengerController implements ChatClientListener {
     private static final DateTimeFormatter FALLBACK_TIME = DateTimeFormatter.ofPattern("HH:mm");
     private static final int MAX_IMAGE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_FILE_BYTES = 10 * 1024 * 1024;
+    private static final String PHONE_ICON_PATH =
+            "M6.62 10.79C8.06 13.62 10.38 15.94 13.21 17.38L15.41 15.18C15.69 14.9 16.08 14.82 16.43 14.93C17.55 15.3 18.75 15.5 20 15.5C20.55 15.5 21 15.95 21 16.5V20C21 20.55 20.55 21 20 21C10.61 21 3 13.39 3 4C3 3.45 3.45 3 4 3H7.5C8.05 3 8.5 3.45 8.5 4C8.5 5.25 8.7 6.45 9.07 7.57C9.18 7.92 9.1 8.31 8.82 8.59L6.62 10.79Z";
+    private static final String VIDEO_ICON_PATH =
+            "M17 10.5V7C17 6.45 16.55 6 16 6H4C3.45 6 3 6.45 3 7V17C3 17.55 3.45 18 4 18H16C16.55 18 17 17.55 17 17V13.5L21 17V7L17 10.5Z";
+    private static final String SEARCH_ICON_PATH =
+            "M15.5 14H14.71L14.43 13.73C15.41 12.59 16 11.11 16 9.5C16 5.91 13.09 3 9.5 3C5.91 3 3 5.91 3 9.5C3 13.09 5.91 16 9.5 16C11.11 16 12.59 15.41 13.73 14.43L14 14.71V15.5L19 20.49L20.49 19L15.5 14ZM9.5 14C7.01 14 5 11.99 5 9.5C5 7.01 7.01 5 9.5 5C11.99 5 14 7.01 14 9.5C14 11.99 11.99 14 9.5 14Z";
 
     @FXML
     private BorderPane rootPane;
@@ -99,6 +112,16 @@ public class MessengerController implements ChatClientListener {
     @FXML
     private Circle chatStatusDot;
     @FXML
+    private Label callStatusLabel;
+    @FXML
+    private Button searchMessagesButton;
+    @FXML
+    private Button callButton;
+    @FXML
+    private Button videoCallButton;
+    @FXML
+    private Button hangupButton;
+    @FXML
     private ScrollPane messagesScrollPane;
     @FXML
     private VBox messagesContainer;
@@ -110,6 +133,14 @@ public class MessengerController implements ChatClientListener {
     private Label emptyStateBodyLabel;
     @FXML
     private Label typingIndicatorLabel;
+    @FXML
+    private VBox messageSearchSidebar;
+    @FXML
+    private TextField messageSearchField;
+    @FXML
+    private Label messageSearchMetaLabel;
+    @FXML
+    private ListView<MessageSearchResult> messageSearchResultsListView;
     @FXML
     private HBox replyPreviewPane;
     @FXML
@@ -130,9 +161,11 @@ public class MessengerController implements ChatClientListener {
     private Button themeToggleButton;
 
     private final ObservableList<Conversation> conversations = FXCollections.observableArrayList();
+    private final ObservableList<MessageSearchResult> messageSearchResults = FXCollections.observableArrayList();
     private FilteredList<Conversation> filteredConversations;
     private final Map<String, Conversation> conversationsById = new HashMap<>();
     private final Map<String, Image> avatarImagesByUsername = new HashMap<>();
+    private final Map<Message, Node> renderedMessageNodes = new HashMap<>();
     private final Map<String, String> onlineUsers = new HashMap<>();
     private final Map<String, String> groupTypingUsers = new LinkedHashMap<>();
     private final Map<String, PauseTransition> typingExpiryTimers = new HashMap<>();
@@ -140,6 +173,7 @@ public class MessengerController implements ChatClientListener {
 
     private DesktopApp app;
     private ChatClientService service;
+    private AudioCallManager audioCallManager;
     private ClientSession session;
     private Conversation groupConversation;
     private Conversation activeConversation;
@@ -153,12 +187,20 @@ public class MessengerController implements ChatClientListener {
     private Image currentUserAvatarImage;
     private ProfilePopupController profilePopupController;
     private Stage profilePopupStage;
+    private CallState callState = CallState.IDLE;
+    private String currentCallId = "";
+    private String currentCallPeerUsername = "";
+    private String currentCallPeerDisplayName = "";
+    private Alert incomingCallAlert;
 
     @FXML
     private void initialize() {
         filteredConversations = new FilteredList<>(conversations, conversation -> true);
         conversationListView.setItems(filteredConversations);
         conversationListView.setCellFactory(listView -> new ConversationListCell());
+        messageSearchResultsListView.setItems(messageSearchResults);
+        messageSearchResultsListView.setCellFactory(listView -> createMessageSearchCell());
+        messageSearchResultsListView.setPlaceholder(new Label("No matching messages yet."));
         conversationListView.getSelectionModel().selectedItemProperty()
                 .addListener((observable, previous, current) -> {
                     if (suppressConversationSelectionHandling) {
@@ -168,6 +210,9 @@ public class MessengerController implements ChatClientListener {
                 });
 
         searchField.textProperty().addListener((observable, oldValue, newValue) -> filterConversations(newValue));
+        messageSearchField.textProperty().addListener((observable, oldValue, newValue) -> refreshMessageSearchResults());
+        messageSearchResultsListView.getSelectionModel().selectedItemProperty()
+                .addListener((observable, previous, current) -> scrollToSearchResult(current));
         messageInputField.textProperty().addListener((observable, oldValue, newValue) -> handleTypingInputChange());
         messageInputField.setOnAction(event -> sendCurrentMessage());
         localTypingIdleTimer.setOnFinished(event -> stopTyping(true));
@@ -177,6 +222,12 @@ public class MessengerController implements ChatClientListener {
         typingIndicatorLabel.setVisible(false);
         replyPreviewPane.setManaged(false);
         replyPreviewPane.setVisible(false);
+        callStatusLabel.setManaged(false);
+        callStatusLabel.setVisible(false);
+        messageSearchSidebar.setManaged(false);
+        messageSearchSidebar.setVisible(false);
+        hangupButton.setManaged(false);
+        hangupButton.setVisible(false);
         currentUserAvatarImageView.setClip(new Circle(22, 22, 22));
         headerAvatarImageView.setClip(new Circle(22, 22, 22));
         currentUserAvatarImageView.imageProperty()
@@ -185,12 +236,21 @@ public class MessengerController implements ChatClientListener {
                 .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(headerAvatarPane, newImage));
         configureAttachmentButton(sendImageButton, "lib/send_image.png", "\uD83D\uDCF7", "Send image");
         configureAttachmentButton(sendFileButton, "lib/send_file.png", "\uD83D\uDCCE", "Send file");
+        configureHeaderIconButton(searchMessagesButton, "Search messages", SEARCH_ICON_PATH, 0);
+        configureHeaderIconButton(callButton, "Voice call", PHONE_ICON_PATH, 0);
+        configureHeaderIconButton(videoCallButton, "Video call", VIDEO_ICON_PATH, 0);
+        configureHeaderIconButton(hangupButton, "End call", PHONE_ICON_PATH, 135);
     }
 
     public void setApp(DesktopApp app, ChatClientService service) {
         this.app = app;
         this.service = service;
         this.session = service.getSession();
+        this.audioCallManager = new AudioCallManager((peerUsername, callId, audioBytes) -> {
+            if (this.service != null) {
+                this.service.sendPrivateCallAudio(peerUsername, callId, audioBytes);
+            }
+        });
 
         currentUserNameLabel.setText(session.getFullName());
         currentUsernameLabel.setText("@" + session.getUsername());
@@ -271,6 +331,59 @@ public class MessengerController implements ChatClientListener {
         themeToggleButton.setText("Light");
     }
 
+    @FXML
+    private void onStartCall() {
+        if (activeConversation == null || activeConversation.isGroupConversation() || service == null) {
+            return;
+        }
+
+        if (!currentCallId.isBlank()) {
+            return;
+        }
+
+        if (!activeConversation.isOnline()) {
+            appendLocalSystemMessage(activeConversation, activeConversation.getTitle() + " is offline right now.");
+            return;
+        }
+
+        currentCallId = UUID.randomUUID().toString();
+        currentCallPeerUsername = normalizeUsername(activeConversation.getPeerUsername());
+        currentCallPeerDisplayName = activeConversation.getTitle();
+        callState = CallState.OUTGOING_RINGING;
+        service.sendPrivateCallInvite(currentCallPeerUsername, currentCallId);
+        appendLocalSystemMessage(activeConversation, "Calling " + currentCallPeerDisplayName + "...");
+        updateHeader(activeConversation);
+    }
+
+    @FXML
+    private void onStartVideoCall() {
+        if (activeConversation == null || activeConversation.isGroupConversation()) {
+            return;
+        }
+
+        appendLocalSystemMessage(activeConversation, "Video call is not available yet in this build.");
+    }
+
+    @FXML
+    private void onToggleMessageSearch() {
+        boolean visible = !messageSearchSidebar.isVisible();
+        setMessageSearchSidebarVisible(visible);
+        if (visible) {
+            refreshMessageSearchResults();
+            messageSearchField.requestFocus();
+            messageSearchField.selectAll();
+        }
+    }
+
+    @FXML
+    private void onHangupCall() {
+        if (currentCallId.isBlank()) {
+            return;
+        }
+
+        endCurrentCall(true, "Call ended.");
+    }
+
     public void shutdown() {
         if (shuttingDown) {
             return;
@@ -278,6 +391,10 @@ public class MessengerController implements ChatClientListener {
 
         shuttingDown = true;
         stopTyping(true);
+        if (!currentCallId.isBlank()) {
+            endCurrentCall(true, "Call ended.");
+        }
+        audioCallManager.shutdown();
         if (profilePopupStage != null) {
             profilePopupStage.close();
         }
@@ -340,6 +457,11 @@ public class MessengerController implements ChatClientListener {
             boolean online = onlineUsers.containsKey(conversation.getPeerUsername());
             conversation.setOnline(online);
             conversation.updateStatusText(online ? "Online" : "Offline");
+        }
+
+        if (!currentCallPeerUsername.isBlank() && !onlineUsers.containsKey(currentCallPeerUsername)) {
+            endCurrentCall(false, resolveCallPeerDisplayName(currentCallPeerUsername, currentCallPeerDisplayName)
+                    + " went offline.");
         }
 
         groupConversation.updateStatusText(formatOnlineCount(totalOnline));
@@ -575,6 +697,75 @@ public class MessengerController implements ChatClientListener {
     }
 
     @Override
+    public void onPrivateCallInvite(String fromUsername, String fromDisplayName, String callId) {
+        Conversation conversation = getOrCreatePrivateConversation(fromUsername, fromDisplayName);
+        appendLocalSystemMessage(conversation, cleanDisplayName(fromDisplayName, fromUsername) + " is calling you.");
+        conversationListView.getSelectionModel().select(conversation);
+
+        if (!currentCallId.isBlank()) {
+            service.sendPrivateCallDecline(fromUsername, callId, "Nguoi dung dang ban.");
+            return;
+        }
+
+        currentCallId = callId == null ? "" : callId.trim();
+        currentCallPeerUsername = normalizeUsername(fromUsername);
+        currentCallPeerDisplayName = cleanDisplayName(fromDisplayName, fromUsername);
+        callState = CallState.INCOMING_RINGING;
+        updateHeader(activeConversation);
+        showIncomingCallPrompt(conversation, currentCallPeerUsername, currentCallPeerDisplayName, currentCallId);
+    }
+
+    @Override
+    public void onPrivateCallRinging(String fromUsername, String fromDisplayName, String callId) {
+        if (!matchesCurrentCall(fromUsername, callId)) {
+            return;
+        }
+
+        callState = CallState.OUTGOING_RINGING;
+        currentCallPeerDisplayName = cleanDisplayName(fromDisplayName, fromUsername);
+        appendLocalSystemMessage(getOrCreatePrivateConversation(fromUsername, fromDisplayName), "Ringing...");
+        updateHeader(activeConversation);
+    }
+
+    @Override
+    public void onPrivateCallAccepted(String fromUsername, String fromDisplayName, String callId) {
+        if (!matchesCurrentCall(fromUsername, callId)) {
+            return;
+        }
+
+        currentCallPeerDisplayName = cleanDisplayName(fromDisplayName, fromUsername);
+        startAudioCall(getOrCreatePrivateConversation(fromUsername, fromDisplayName), currentCallPeerUsername, currentCallPeerDisplayName, callId);
+    }
+
+    @Override
+    public void onPrivateCallDeclined(String fromUsername, String fromDisplayName, String callId, String reason) {
+        if (!matchesCurrentCall(fromUsername, callId)) {
+            return;
+        }
+
+        closeIncomingCallAlert();
+        String message = reason == null || reason.isBlank() ? "Call was declined." : reason.trim();
+        appendLocalSystemMessage(getOrCreatePrivateConversation(fromUsername, fromDisplayName), message);
+        clearCallState();
+        updateHeader(activeConversation);
+    }
+
+    @Override
+    public void onPrivateCallEnded(String fromUsername, String callId) {
+        if (!matchesCurrentCall(fromUsername, callId)) {
+            return;
+        }
+
+        closeIncomingCallAlert();
+        endCurrentCall(false, "Call ended by " + resolveCallPeerDisplayName(fromUsername, fromUsername) + ".");
+    }
+
+    @Override
+    public void onPrivateCallAudio(String fromUsername, String callId, byte[] audioBytes) {
+        audioCallManager.handleIncomingAudio(fromUsername, callId, audioBytes);
+    }
+
+    @Override
     public void onUserAvatarUpdated(String username, byte[] avatarBytes) {
         String normalizedUsername = normalizeUsername(username);
         if (normalizedUsername.isBlank()) {
@@ -668,12 +859,14 @@ public class MessengerController implements ChatClientListener {
         renderConversation(activeConversation);
         updateHeader(activeConversation);
         updateTypingIndicator();
+        refreshMessageSearchResults();
         messageInputField.requestFocus();
         conversationListView.refresh();
     }
 
     private void renderConversation(Conversation conversation) {
         messagesContainer.getChildren().clear();
+        renderedMessageNodes.clear();
 
         if (conversation.getMessages().isEmpty()) {
             emptyStatePane.setVisible(true);
@@ -690,9 +883,12 @@ public class MessengerController implements ChatClientListener {
         emptyStatePane.setVisible(false);
         emptyStatePane.setManaged(false);
         for (Message message : conversation.getMessages()) {
-            messagesContainer.getChildren().add(createMessageNode(conversation, message, false));
+            Node node = createMessageNode(conversation, message, false);
+            renderedMessageNodes.put(message, node);
+            messagesContainer.getChildren().add(node);
         }
         scrollToBottomSoon();
+        refreshMessageSearchResults();
     }
 
     private void appendMessage(Conversation conversation, Message message, boolean animate) {
@@ -714,11 +910,14 @@ public class MessengerController implements ChatClientListener {
         boolean pinnedToBottom = isPinnedToBottom();
         emptyStatePane.setVisible(false);
         emptyStatePane.setManaged(false);
-        messagesContainer.getChildren().add(createMessageNode(conversation, message, animate));
+        Node node = createMessageNode(conversation, message, animate);
+        renderedMessageNodes.put(message, node);
+        messagesContainer.getChildren().add(node);
         if (pinnedToBottom || message.isSentByCurrentUser()) {
             scrollToBottomSoon();
         }
         updateHeader(conversation);
+        refreshMessageSearchResults();
         conversationListView.refresh();
     }
 
@@ -825,6 +1024,7 @@ public class MessengerController implements ChatClientListener {
             chatStatusDot.setVisible(false);
             headerAvatarLabel.setText("?");
             applyHeaderAvatar(null, "?");
+            updateCallControls(null);
             return;
         }
 
@@ -832,6 +1032,220 @@ public class MessengerController implements ChatClientListener {
         chatTitleLabel.setText(conversation.getTitle());
         chatStatusLabel.setText(conversation.getStatusText());
         chatStatusDot.setVisible(!conversation.isGroupConversation() && conversation.isOnline());
+        updateCallControls(conversation);
+    }
+
+    private void updateCallControls(Conversation conversation) {
+        boolean hasConversation = conversation != null;
+        boolean privateConversation = conversation != null && !conversation.isGroupConversation();
+        boolean callActive = !currentCallId.isBlank() && callState != CallState.IDLE;
+        boolean samePeer = privateConversation
+                && normalizeUsername(conversation.getPeerUsername()).equals(currentCallPeerUsername);
+
+        String statusText = buildCallStatusText(privateConversation, samePeer);
+        callStatusLabel.setText(statusText);
+        callStatusLabel.setVisible(!statusText.isBlank());
+        callStatusLabel.setManaged(callStatusLabel.isVisible());
+
+        boolean showCallButton = privateConversation && !callActive;
+        callButton.setVisible(showCallButton);
+        callButton.setManaged(showCallButton);
+        callButton.setDisable(!showCallButton || !conversation.isOnline());
+
+        boolean showVideoCallButton = privateConversation && !callActive;
+        videoCallButton.setVisible(showVideoCallButton);
+        videoCallButton.setManaged(showVideoCallButton);
+        videoCallButton.setDisable(!showVideoCallButton || !conversation.isOnline());
+
+        boolean showHangupButton = callActive;
+        hangupButton.setVisible(showHangupButton);
+        hangupButton.setManaged(showHangupButton);
+
+        searchMessagesButton.setVisible(hasConversation);
+        searchMessagesButton.setManaged(hasConversation);
+    }
+
+    private String buildCallStatusText(boolean privateConversation, boolean samePeer) {
+        if (currentCallId.isBlank() || callState == CallState.IDLE) {
+            return "";
+        }
+
+        String peerDisplayName = resolveCallPeerDisplayName(currentCallPeerUsername, currentCallPeerDisplayName);
+        return switch (callState) {
+            case OUTGOING_RINGING -> samePeer || !privateConversation
+                    ? "Calling..."
+                    : "Calling " + peerDisplayName;
+            case INCOMING_RINGING -> samePeer || !privateConversation
+                    ? "Incoming call"
+                    : "Incoming call from " + peerDisplayName;
+            case IN_CALL -> samePeer || !privateConversation
+                    ? "Voice call active"
+                    : "In call with " + peerDisplayName;
+            case IDLE -> "";
+        };
+    }
+
+    private void setMessageSearchSidebarVisible(boolean visible) {
+        messageSearchSidebar.setVisible(visible);
+        messageSearchSidebar.setManaged(visible);
+        searchMessagesButton.getStyleClass().remove("search-toggle-button-active");
+        if (visible) {
+            searchMessagesButton.getStyleClass().add("search-toggle-button-active");
+            return;
+        }
+
+        messageSearchResultsListView.getSelectionModel().clearSelection();
+    }
+
+    private void refreshMessageSearchResults() {
+        messageSearchResults.clear();
+
+        if (!messageSearchSidebar.isVisible()) {
+            return;
+        }
+
+        if (activeConversation == null) {
+            messageSearchMetaLabel.setText("Choose a conversation to search.");
+            return;
+        }
+
+        String query = messageSearchField.getText() == null ? "" : messageSearchField.getText().trim();
+        if (query.isBlank()) {
+            messageSearchMetaLabel.setText("Type to search in " + activeConversation.getTitle() + ".");
+            return;
+        }
+
+        String normalizedQuery = query.toLowerCase(Locale.ROOT);
+        for (Message message : activeConversation.getMessages()) {
+            String searchableText = extractSearchableText(message);
+            if (searchableText.isBlank() || !searchableText.toLowerCase(Locale.ROOT).contains(normalizedQuery)) {
+                continue;
+            }
+
+            messageSearchResults.add(new MessageSearchResult(
+                    message,
+                    resolveSearchSender(message),
+                    message.getTimestamp(),
+                    buildSearchSnippet(searchableText, query)));
+        }
+
+        if (messageSearchResults.isEmpty()) {
+            messageSearchMetaLabel.setText("No results for \"" + query + "\".");
+            return;
+        }
+
+        messageSearchMetaLabel.setText(messageSearchResults.size() + " result(s) in " + activeConversation.getTitle() + ".");
+    }
+
+    private ListCell<MessageSearchResult> createMessageSearchCell() {
+        return new ListCell<>() {
+            @Override
+            protected void updateItem(MessageSearchResult item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+
+                Label topLine = new Label(item.sender() + "  •  " + item.timestamp());
+                topLine.getStyleClass().add("message-search-result-topline");
+
+                Label snippetLabel = new Label(item.snippet());
+                snippetLabel.setWrapText(true);
+                snippetLabel.getStyleClass().add("message-search-result-snippet");
+
+                VBox card = new VBox(topLine, snippetLabel);
+                card.getStyleClass().add("message-search-result-card");
+                setText(null);
+                setGraphic(card);
+            }
+        };
+    }
+
+    private void scrollToSearchResult(MessageSearchResult result) {
+        if (result == null || activeConversation == null) {
+            return;
+        }
+
+        Node messageNode = renderedMessageNodes.get(result.message());
+        if (messageNode == null) {
+            return;
+        }
+
+        javafx.application.Platform.runLater(() -> {
+            double contentHeight = messagesContainer.getBoundsInLocal().getHeight();
+            double viewportHeight = messagesScrollPane.getViewportBounds().getHeight();
+            double maxScroll = Math.max(0, contentHeight - viewportHeight);
+            if (maxScroll <= 0) {
+                messagesScrollPane.setVvalue(0);
+                return;
+            }
+
+            double targetY = Math.max(0, messageNode.getBoundsInParent().getMinY() - 18);
+            messagesScrollPane.setVvalue(Math.min(1.0, targetY / maxScroll));
+        });
+    }
+
+    private String extractSearchableText(Message message) {
+        if (message == null) {
+            return "";
+        }
+        if (message.isAttachment()) {
+            return message.getSummaryText();
+        }
+        if (message.isSystemMessage()) {
+            return message.getText();
+        }
+
+        return message.getCopyText();
+    }
+
+    private String resolveSearchSender(Message message) {
+        if (message == null) {
+            return "Unknown";
+        }
+        if (message.isSentByCurrentUser()) {
+            return "You";
+        }
+        if (message.getSenderDisplayName() != null && !message.getSenderDisplayName().isBlank()) {
+            return message.getSenderDisplayName();
+        }
+        if (message.getSenderUsername() != null && !message.getSenderUsername().isBlank()) {
+            return message.getSenderUsername();
+        }
+        return "Unknown";
+    }
+
+    private String buildSearchSnippet(String text, String query) {
+        String safeText = text == null ? "" : text.trim().replaceAll("\\s+", " ");
+        if (safeText.isBlank()) {
+            return "";
+        }
+
+        String safeQuery = query == null ? "" : query.trim();
+        if (safeQuery.isBlank()) {
+            return safeText;
+        }
+
+        String lowerText = safeText.toLowerCase(Locale.ROOT);
+        String lowerQuery = safeQuery.toLowerCase(Locale.ROOT);
+        int matchIndex = lowerText.indexOf(lowerQuery);
+        if (matchIndex < 0) {
+            return safeText.length() <= 120 ? safeText : safeText.substring(0, 120) + "...";
+        }
+
+        int start = Math.max(0, matchIndex - 28);
+        int end = Math.min(safeText.length(), matchIndex + safeQuery.length() + 56);
+        String snippet = safeText.substring(start, end).trim();
+        if (start > 0) {
+            snippet = "..." + snippet;
+        }
+        if (end < safeText.length()) {
+            snippet = snippet + "...";
+        }
+        return snippet;
     }
 
     private void updateTypingIndicator() {
@@ -929,6 +1343,7 @@ public class MessengerController implements ChatClientListener {
             renderConversation(conversation);
             updateTypingIndicator();
         }
+        refreshMessageSearchResults();
         conversationListView.refresh();
     }
 
@@ -1066,6 +1481,120 @@ public class MessengerController implements ChatClientListener {
         }
 
         service.sendPrivateSeen(peerUsername, safeMessageId);
+    }
+
+    private boolean matchesCurrentCall(String fromUsername, String callId) {
+        return !currentCallId.isBlank()
+                && currentCallId.equals(callId == null ? "" : callId.trim())
+                && normalizeUsername(fromUsername).equals(currentCallPeerUsername);
+    }
+
+    private void showIncomingCallPrompt(Conversation conversation, String fromUsername, String fromDisplayName, String callId) {
+        closeIncomingCallAlert();
+
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.initOwner(rootPane.getScene() == null ? null : rootPane.getScene().getWindow());
+        alert.setTitle("Incoming call");
+        alert.setHeaderText(resolveCallPeerDisplayName(fromUsername, fromDisplayName) + " is calling you");
+        alert.setContentText("Do you want to answer the voice call?");
+
+        ButtonType acceptButton = new ButtonType("Accept", ButtonBar.ButtonData.OK_DONE);
+        ButtonType declineButton = new ButtonType("Decline", ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(acceptButton, declineButton);
+        alert.setOnHidden(event -> {
+            if (incomingCallAlert == alert) {
+                incomingCallAlert = null;
+            }
+        });
+        incomingCallAlert = alert;
+
+        ButtonType result = alert.showAndWait().orElse(declineButton);
+        if (!matchesCurrentCall(fromUsername, callId)) {
+            return;
+        }
+
+        if (result == acceptButton) {
+            service.sendPrivateCallAccept(fromUsername, callId);
+            startAudioCall(conversation, fromUsername, fromDisplayName, callId);
+            return;
+        }
+
+        service.sendPrivateCallDecline(fromUsername, callId, "Cuoc goi da bi tu choi.");
+        appendLocalSystemMessage(conversation, "You declined the call.");
+        clearCallState();
+        updateHeader(activeConversation);
+    }
+
+    private void closeIncomingCallAlert() {
+        if (incomingCallAlert != null) {
+            incomingCallAlert.close();
+            incomingCallAlert = null;
+        }
+    }
+
+    private void startAudioCall(Conversation conversation, String peerUsername, String peerDisplayName, String callId) {
+        currentCallId = callId == null ? "" : callId.trim();
+        currentCallPeerUsername = normalizeUsername(peerUsername);
+        currentCallPeerDisplayName = resolveCallPeerDisplayName(peerUsername, peerDisplayName);
+        callState = CallState.IN_CALL;
+
+        if (!audioCallManager.startCall(currentCallPeerUsername, currentCallId)) {
+            appendLocalSystemMessage(conversation, "Unable to access microphone or speakers for the call.");
+            if (service != null && !currentCallId.isBlank() && !currentCallPeerUsername.isBlank()) {
+                service.sendPrivateCallEnd(currentCallPeerUsername, currentCallId);
+            }
+            clearCallState();
+            updateHeader(activeConversation);
+            return;
+        }
+
+        appendLocalSystemMessage(conversation, "Voice call connected with " + currentCallPeerDisplayName + ".");
+        if (activeConversation == null || activeConversation.isGroupConversation()
+                || !currentCallPeerUsername.equals(normalizeUsername(activeConversation.getPeerUsername()))) {
+            conversationListView.getSelectionModel().select(conversation);
+        } else {
+            updateHeader(activeConversation);
+        }
+    }
+
+    private void endCurrentCall(boolean notifyPeer, String message) {
+        Conversation conversation = currentCallPeerUsername.isBlank()
+                ? activeConversation
+                : getOrCreatePrivateConversation(currentCallPeerUsername, currentCallPeerDisplayName);
+
+        if (notifyPeer && service != null && !currentCallPeerUsername.isBlank() && !currentCallId.isBlank()) {
+            service.sendPrivateCallEnd(currentCallPeerUsername, currentCallId);
+        }
+
+        audioCallManager.stop();
+        closeIncomingCallAlert();
+        if (message != null && !message.isBlank() && conversation != null) {
+            appendLocalSystemMessage(conversation, message);
+        }
+        clearCallState();
+        updateHeader(activeConversation);
+    }
+
+    private void clearCallState() {
+        audioCallManager.stop();
+        callState = CallState.IDLE;
+        currentCallId = "";
+        currentCallPeerUsername = "";
+        currentCallPeerDisplayName = "";
+    }
+
+    private String resolveCallPeerDisplayName(String username, String fallbackDisplayName) {
+        String normalizedUsername = normalizeUsername(username);
+        Conversation conversation = conversationsById.get(normalizedUsername);
+        if (conversation != null && !conversation.getTitle().isBlank()) {
+            return conversation.getTitle();
+        }
+
+        String safeDisplayName = fallbackDisplayName == null ? "" : fallbackDisplayName.trim();
+        if (!safeDisplayName.isBlank()) {
+            return safeDisplayName;
+        }
+        return normalizedUsername.isBlank() ? "Unknown" : normalizedUsername;
     }
 
     private void restartExpiryTimer(String key, Runnable action) {
@@ -1340,6 +1869,23 @@ public class MessengerController implements ChatClientListener {
         button.setGraphic(imageView);
     }
 
+    private void configureHeaderIconButton(Button button, String tooltipText, String svgPathContent, double rotateDegrees) {
+        if (button == null) {
+            return;
+        }
+
+        button.setText("");
+        button.setTooltip(new Tooltip(tooltipText));
+
+        SVGPath icon = new SVGPath();
+        icon.setContent(svgPathContent);
+        icon.getStyleClass().add("header-action-icon");
+        icon.setScaleX(0.78);
+        icon.setScaleY(0.78);
+        icon.setRotate(rotateDegrees);
+        button.setGraphic(icon);
+    }
+
     private byte[] readAttachmentBytes(Path filePath, int maxBytes, String label, Conversation conversation) {
         try {
             if (!Files.exists(filePath)) {
@@ -1546,6 +2092,16 @@ public class MessengerController implements ChatClientListener {
                 profilePopupController.setStatus(message, error);
             }
         });
+    }
+
+    private enum CallState {
+        IDLE,
+        OUTGOING_RINGING,
+        INCOMING_RINGING,
+        IN_CALL
+    }
+
+    private record MessageSearchResult(Message message, String sender, String timestamp, String snippet) {
     }
 
     private record ParsedGroupMessage(Message message, boolean systemMessage, String senderUsername) {

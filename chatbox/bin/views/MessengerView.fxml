@@ -102,6 +102,20 @@
                                 </HBox>
                             </children>
                         </VBox>
+                        <Region HBox.hgrow="ALWAYS" />
+                        <Label fx:id="callStatusLabel" managed="false" styleClass="call-status" text="Calling..." visible="false" />
+                        <HBox alignment="CENTER_RIGHT" spacing="8.0">
+                            <children>
+                                <Button fx:id="searchMessagesButton" mnemonicParsing="false" onAction="#onToggleMessageSearch"
+                                        styleClass="secondary-button compact-button header-icon-button search-toggle-button" text="" />
+                                <Button fx:id="callButton" mnemonicParsing="false" onAction="#onStartCall"
+                                        styleClass="secondary-button compact-button header-icon-button call-button" text="" />
+                                <Button fx:id="videoCallButton" mnemonicParsing="false" onAction="#onStartVideoCall"
+                                        styleClass="secondary-button compact-button header-icon-button video-call-button" text="" />
+                                <Button fx:id="hangupButton" managed="false" mnemonicParsing="false" onAction="#onHangupCall"
+                                        styleClass="secondary-button compact-button header-icon-button call-end-button" text="" visible="false" />
+                            </children>
+                        </HBox>
                     </children>
                     <padding>
                         <Insets bottom="18.0" left="24.0" right="24.0" top="22.0" />
@@ -137,6 +151,30 @@
                     </children>
                 </StackPane>
             </center>
+
+            <right>
+                <VBox fx:id="messageSearchSidebar" managed="false" prefWidth="320.0"
+                        styleClass="message-search-sidebar" visible="false">
+                    <children>
+                        <HBox alignment="CENTER_LEFT" spacing="10.0" styleClass="message-search-sidebar-header">
+                            <children>
+                                <Label styleClass="message-search-sidebar-title" text="Search Messages" />
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Button mnemonicParsing="false" onAction="#onToggleMessageSearch"
+                                        styleClass="ghost-button compact-button message-search-close-button" text="×" />
+                            </children>
+                        </HBox>
+                        <TextField fx:id="messageSearchField" promptText="Search in current conversation"
+                                styleClass="text-input message-search-input" />
+                        <Label fx:id="messageSearchMetaLabel" styleClass="message-search-meta"
+                                text="Type to search in this conversation." wrapText="true" />
+                        <ListView fx:id="messageSearchResultsListView" styleClass="message-search-results" VBox.vgrow="ALWAYS" />
+                    </children>
+                    <padding>
+                        <Insets bottom="18.0" left="16.0" right="16.0" top="18.0" />
+                    </padding>
+                </VBox>
+            </right>
 
             <bottom>
                 <VBox spacing="10.0" styleClass="composer-shell">
