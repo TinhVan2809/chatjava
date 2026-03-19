@@ -1,0 +1,1553 @@
+package controllers;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+
+import core.DesktopApp;
+import core.StoragePaths;
+import core.UiResources;
+import javafx.animation.PauseTransition;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.shape.Circle;
+import javafx.stage.FileChooser;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
+import javafx.util.Duration;
+import models.ClientSession;
+import models.Conversation;
+import models.Message;
+import services.ChatClientListener;
+import services.ChatClientService;
+import views.cells.ConversationListCell;
+
+public class MessengerController implements ChatClientListener {
+    private static final String GROUP_CONVERSATION_ID = "group";
+    private static final Pattern USERNAME_AT_END = Pattern.compile("\\(([^)]+)\\)\\s*$");
+    private static final Pattern TIME_AND_BODY = Pattern.compile("^\\[(.+?)]\\s+(.*)$");
+    private static final DateTimeFormatter SERVER_TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final DateTimeFormatter FALLBACK_TIME = DateTimeFormatter.ofPattern("HH:mm");
+    private static final int MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+    @FXML
+    private BorderPane rootPane;
+    @FXML
+    private ListView<Conversation> conversationListView;
+    @FXML
+    private TextField searchField;
+    @FXML
+    private Label currentUserNameLabel;
+    @FXML
+    private Label currentUsernameLabel;
+    @FXML
+    private Label currentUserAvatarLabel;
+    @FXML
+    private ImageView currentUserAvatarImageView;
+    @FXML
+    private StackPane currentUserAvatarPane;
+    @FXML
+    private StackPane headerAvatarPane;
+    @FXML
+    private ImageView headerAvatarImageView;
+    @FXML
+    private Label headerAvatarLabel;
+    @FXML
+    private Label chatTitleLabel;
+    @FXML
+    private Label chatStatusLabel;
+    @FXML
+    private Circle chatStatusDot;
+    @FXML
+    private ScrollPane messagesScrollPane;
+    @FXML
+    private VBox messagesContainer;
+    @FXML
+    private StackPane emptyStatePane;
+    @FXML
+    private Label emptyStateTitleLabel;
+    @FXML
+    private Label emptyStateBodyLabel;
+    @FXML
+    private Label typingIndicatorLabel;
+    @FXML
+    private HBox replyPreviewPane;
+    @FXML
+    private Label replyPreviewTitleLabel;
+    @FXML
+    private Label replyPreviewBodyLabel;
+    @FXML
+    private Button clearReplyButton;
+    @FXML
+    private TextField messageInputField;
+    @FXML
+    private Button sendImageButton;
+    @FXML
+    private Button sendFileButton;
+    @FXML
+    private Button sendButton;
+    @FXML
+    private Button themeToggleButton;
+
+    private final ObservableList<Conversation> conversations = FXCollections.observableArrayList();
+    private FilteredList<Conversation> filteredConversations;
+    private final Map<String, Conversation> conversationsById = new HashMap<>();
+    private final Map<String, Image> avatarImagesByUsername = new HashMap<>();
+    private final Map<String, String> onlineUsers = new HashMap<>();
+    private final Map<String, String> groupTypingUsers = new LinkedHashMap<>();
+    private final Map<String, PauseTransition> typingExpiryTimers = new HashMap<>();
+    private final PauseTransition localTypingIdleTimer = new PauseTransition(Duration.millis(1200));
+
+    private DesktopApp app;
+    private ChatClientService service;
+    private ClientSession session;
+    private Conversation groupConversation;
+    private Conversation activeConversation;
+    private Conversation localTypingConversation;
+    private boolean localTypingActive;
+    private long lastTypingSentAt;
+    private boolean shuttingDown;
+    private boolean suppressConversationSelectionHandling;
+    private Conversation replyConversation;
+    private Message replyMessage;
+    private Image currentUserAvatarImage;
+    private ProfilePopupController profilePopupController;
+    private Stage profilePopupStage;
+
+    @FXML
+    private void initialize() {
+        filteredConversations = new FilteredList<>(conversations, conversation -> true);
+        conversationListView.setItems(filteredConversations);
+        conversationListView.setCellFactory(listView -> new ConversationListCell());
+        conversationListView.getSelectionModel().selectedItemProperty()
+                .addListener((observable, previous, current) -> {
+                    if (suppressConversationSelectionHandling) {
+                        return;
+                    }
+                    selectConversation(current);
+                });
+
+        searchField.textProperty().addListener((observable, oldValue, newValue) -> filterConversations(newValue));
+        messageInputField.textProperty().addListener((observable, oldValue, newValue) -> handleTypingInputChange());
+        messageInputField.setOnAction(event -> sendCurrentMessage());
+        localTypingIdleTimer.setOnFinished(event -> stopTyping(true));
+
+        messagesScrollPane.setFitToWidth(true);
+        typingIndicatorLabel.setManaged(false);
+        typingIndicatorLabel.setVisible(false);
+        replyPreviewPane.setManaged(false);
+        replyPreviewPane.setVisible(false);
+        currentUserAvatarImageView.setClip(new Circle(22, 22, 22));
+        headerAvatarImageView.setClip(new Circle(22, 22, 22));
+        currentUserAvatarImageView.imageProperty()
+                .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(currentUserAvatarPane, newImage));
+        headerAvatarImageView.imageProperty()
+                .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(headerAvatarPane, newImage));
+        configureAttachmentButton(sendImageButton, "lib/send_image.png", "\uD83D\uDCF7", "Send image");
+        configureAttachmentButton(sendFileButton, "lib/send_file.png", "\uD83D\uDCCE", "Send file");
+    }
+
+    public void setApp(DesktopApp app, ChatClientService service) {
+        this.app = app;
+        this.service = service;
+        this.session = service.getSession();
+
+        currentUserNameLabel.setText(session.getFullName());
+        currentUsernameLabel.setText("@" + session.getUsername());
+        currentUserAvatarLabel.setText(buildAvatar(session.getFullName()));
+        loadCurrentUserAvatarFromDisk();
+        applyCurrentUserAvatar(currentUserAvatarImage);
+        cacheAvatarImage(session.getUsername(), currentUserAvatarImage);
+
+        bootstrapConversations();
+    }
+
+    @FXML
+    private void onSendMessage() {
+        sendCurrentMessage();
+    }
+
+    @FXML
+    private void onSendImage() {
+        if (activeConversation == null || service == null) {
+            return;
+        }
+
+        Path imagePath = promptForAttachment(true);
+        if (imagePath == null) {
+            return;
+        }
+
+        Conversation targetConversation = activeConversation;
+        Thread sender = new Thread(() -> sendImageAttachment(targetConversation, imagePath),
+                "fx-send-image-" + System.currentTimeMillis());
+        sender.setDaemon(true);
+        sender.start();
+    }
+
+    @FXML
+    private void onSendFile() {
+        if (activeConversation == null || service == null) {
+            return;
+        }
+
+        Path filePath = promptForAttachment(false);
+        if (filePath == null) {
+            return;
+        }
+
+        Conversation targetConversation = activeConversation;
+        Thread sender = new Thread(() -> sendFileAttachment(targetConversation, filePath),
+                "fx-send-file-" + System.currentTimeMillis());
+        sender.setDaemon(true);
+        sender.start();
+    }
+
+    @FXML
+    private void onClearReply() {
+        clearReply();
+    }
+
+    @FXML
+    private void onOpenProfile() {
+        showProfilePopup();
+    }
+
+    @FXML
+    private void onLogout() {
+        shutdown();
+        app.logoutToAuth(session);
+    }
+
+    @FXML
+    private void onToggleTheme() {
+        if (rootPane.getStyleClass().contains("theme-dark")) {
+            rootPane.getStyleClass().remove("theme-dark");
+            themeToggleButton.setText("Dark");
+            return;
+        }
+
+        rootPane.getStyleClass().add("theme-dark");
+        themeToggleButton.setText("Light");
+    }
+
+    public void shutdown() {
+        if (shuttingDown) {
+            return;
+        }
+
+        shuttingDown = true;
+        stopTyping(true);
+        if (profilePopupStage != null) {
+            profilePopupStage.close();
+        }
+        if (service != null) {
+            service.disconnect();
+        }
+    }
+
+    @Override
+    public void onGroupChatLine(String rawLine) {
+        if (rawLine == null || rawLine.isBlank()) {
+            return;
+        }
+
+        ParsedGroupMessage parsed = parseGroupMessage(rawLine);
+        if (parsed == null) {
+            return;
+        }
+
+        if (!parsed.systemMessage() && !parsed.senderUsername().isBlank()) {
+            groupTypingUsers.remove(parsed.senderUsername());
+            stopExpiryTimer("group:" + parsed.senderUsername());
+            if (groupTypingUsers.isEmpty()) {
+                groupConversation.clearTyping();
+            } else {
+                groupConversation.showTyping(buildGroupTypingText());
+            }
+        }
+
+        appendMessage(groupConversation, parsed.message(), true);
+        updateTypingIndicator();
+    }
+
+    @Override
+    public void onOnlineUsers(List<String> displayUsers) {
+        onlineUsers.clear();
+        int totalOnline = 0;
+
+        for (String displayUser : displayUsers) {
+            totalOnline++;
+            String username = extractUsername(displayUser);
+            if (username == null || username.equalsIgnoreCase(session.getUsername())) {
+                continue;
+            }
+
+            onlineUsers.put(username, displayUser == null ? username : displayUser.trim());
+            Conversation conversation = getOrCreatePrivateConversation(username, displayUser);
+            conversation.setOnline(true);
+            conversation.updateStatusText("Online");
+            if (conversation.getMessages().isEmpty()) {
+                conversation.seedPreview("Start a conversation", "");
+            }
+        }
+
+        for (Conversation conversation : new ArrayList<>(conversations)) {
+            if (conversation.isGroupConversation() || conversation.getPeerUsername() == null) {
+                continue;
+            }
+
+            boolean online = onlineUsers.containsKey(conversation.getPeerUsername());
+            conversation.setOnline(online);
+            conversation.updateStatusText(online ? "Online" : "Offline");
+        }
+
+        groupConversation.updateStatusText(formatOnlineCount(totalOnline));
+        resortConversations();
+        updateHeader(activeConversation);
+        conversationListView.refresh();
+    }
+
+    @Override
+    public void onGroupTyping(String fromUsername, String fromDisplayName, boolean typing) {
+        if (fromUsername == null || fromUsername.isBlank() || fromUsername.equalsIgnoreCase(session.getUsername())) {
+            return;
+        }
+
+        String displayName = cleanDisplayName(fromDisplayName, fromUsername);
+        String timerKey = "group:" + fromUsername;
+
+        if (typing) {
+            groupTypingUsers.put(fromUsername, displayName);
+            groupConversation.showTyping(buildGroupTypingText());
+            restartExpiryTimer(timerKey, () -> {
+                groupTypingUsers.remove(fromUsername);
+                groupConversation.clearTyping();
+                updateTypingIndicator();
+                conversationListView.refresh();
+            });
+        } else {
+            groupTypingUsers.remove(fromUsername);
+            stopExpiryTimer(timerKey);
+            groupConversation.clearTyping();
+        }
+
+        if (!groupTypingUsers.isEmpty()) {
+            groupConversation.showTyping(buildGroupTypingText());
+        } else {
+            groupConversation.clearTyping();
+        }
+
+        updateTypingIndicator();
+        conversationListView.refresh();
+    }
+
+    @Override
+    public void onGroupImage(String time, String fromUsername, String fromDisplayName, String fileName, String mimeType,
+            byte[] imageBytes) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            return;
+        }
+
+        clearIncomingGroupTyping(fromUsername);
+        appendMessage(groupConversation, Message.imageMessage(
+                UUID.randomUUID().toString(),
+                normalizeUsername(fromUsername),
+                cleanDisplayName(fromDisplayName, fromUsername),
+                normalizeAttachmentName(fileName, "image", 120),
+                mimeType,
+                imageBytes,
+                isCurrentUser(fromUsername),
+                parseServerTime(time)), true);
+        updateTypingIndicator();
+    }
+
+    @Override
+    public void onGroupFile(String time, String fromUsername, String fromDisplayName, String fileName, String mimeType,
+            byte[] fileBytes) {
+        if (fileBytes == null || fileBytes.length == 0) {
+            return;
+        }
+
+        clearIncomingGroupTyping(fromUsername);
+        appendMessage(groupConversation, Message.fileMessage(
+                UUID.randomUUID().toString(),
+                normalizeUsername(fromUsername),
+                cleanDisplayName(fromDisplayName, fromUsername),
+                normalizeAttachmentName(fileName, "file", 160),
+                mimeType,
+                fileBytes,
+                fileBytes.length,
+                isCurrentUser(fromUsername),
+                parseServerTime(time)), true);
+        updateTypingIndicator();
+    }
+
+    @Override
+    public void onPrivateMessage(String fromUsername, String fromDisplayName, String messageId, String message) {
+        Conversation conversation = getOrCreatePrivateConversation(fromUsername, fromDisplayName);
+        stopConversationTyping(conversation);
+        Message privateMessage = Message.userMessage(
+                messageId,
+                fromUsername,
+                cleanDisplayName(fromDisplayName, fromUsername),
+                message,
+                false,
+                LocalDateTime.now());
+        appendMessage(conversation, privateMessage, true);
+
+        if (conversation.equals(activeConversation)) {
+            sendSeenReceipt(conversation, messageId);
+            return;
+        }
+
+        conversation.queuePendingSeenMessage(messageId);
+    }
+
+    @Override
+    public void onPrivateMessageSent(String toUsername, String toDisplayName, String messageId, String message) {
+        Conversation conversation = getOrCreatePrivateConversation(toUsername, toDisplayName);
+        stopConversationTyping(conversation);
+        appendMessage(conversation, Message.userMessage(
+                messageId,
+                session.getUsername(),
+                session.getFullName(),
+                message,
+                true,
+                LocalDateTime.now()), true);
+    }
+
+    @Override
+    public void onPrivateImage(String fromUsername, String fromDisplayName, String fileName, String mimeType,
+            byte[] imageBytes) {
+        Conversation conversation = getOrCreatePrivateConversation(fromUsername, fromDisplayName);
+        stopConversationTyping(conversation);
+        appendMessage(conversation, Message.imageMessage(
+                UUID.randomUUID().toString(),
+                normalizeUsername(fromUsername),
+                cleanDisplayName(fromDisplayName, fromUsername),
+                normalizeAttachmentName(fileName, "image", 120),
+                mimeType,
+                imageBytes,
+                false,
+                LocalDateTime.now()), true);
+    }
+
+    @Override
+    public void onPrivateImageSent(String toUsername, String toDisplayName, String fileName, String mimeType,
+            byte[] imageBytes) {
+        Conversation conversation = getOrCreatePrivateConversation(toUsername, toDisplayName);
+        stopConversationTyping(conversation);
+        appendMessage(conversation, Message.imageMessage(
+                UUID.randomUUID().toString(),
+                session.getUsername(),
+                session.getFullName(),
+                normalizeAttachmentName(fileName, "image", 120),
+                mimeType,
+                imageBytes,
+                true,
+                LocalDateTime.now()), true);
+    }
+
+    @Override
+    public void onPrivateFile(String fromUsername, String fromDisplayName, String fileName, String mimeType,
+            byte[] fileBytes) {
+        Conversation conversation = getOrCreatePrivateConversation(fromUsername, fromDisplayName);
+        stopConversationTyping(conversation);
+        appendMessage(conversation, Message.fileMessage(
+                UUID.randomUUID().toString(),
+                normalizeUsername(fromUsername),
+                cleanDisplayName(fromDisplayName, fromUsername),
+                normalizeAttachmentName(fileName, "file", 160),
+                mimeType,
+                fileBytes,
+                fileBytes == null ? -1 : fileBytes.length,
+                false,
+                LocalDateTime.now()), true);
+    }
+
+    @Override
+    public void onPrivateFileSent(String toUsername, String toDisplayName, String fileName, String mimeType,
+            long sizeBytes) {
+        Conversation conversation = getOrCreatePrivateConversation(toUsername, toDisplayName);
+        stopConversationTyping(conversation);
+        appendMessage(conversation, Message.fileMessage(
+                UUID.randomUUID().toString(),
+                session.getUsername(),
+                session.getFullName(),
+                normalizeAttachmentName(fileName, "file", 160),
+                mimeType,
+                null,
+                sizeBytes,
+                true,
+                LocalDateTime.now()), true);
+    }
+
+    @Override
+    public void onPrivateRead(String fromUsername, String messageId) {
+        String normalizedUsername = fromUsername == null ? "" : fromUsername.trim().toLowerCase(Locale.ROOT);
+        Conversation conversation = conversationsById.get(normalizedUsername);
+        if (conversation == null) {
+            return;
+        }
+
+        if (!conversation.markMessageReadById(messageId)) {
+            return;
+        }
+
+        if (conversation.equals(activeConversation)) {
+            renderConversation(conversation);
+            updateTypingIndicator();
+        }
+        conversationListView.refresh();
+    }
+
+    @Override
+    public void onPrivateTyping(String fromUsername, String fromDisplayName, boolean typing) {
+        Conversation conversation = getOrCreatePrivateConversation(fromUsername, fromDisplayName);
+        String timerKey = "pm:" + fromUsername;
+
+        if (typing) {
+            conversation.showTyping(cleanDisplayName(fromDisplayName, fromUsername) + " đang soạn tin...");
+            restartExpiryTimer(timerKey, () -> {
+                conversation.clearTyping();
+                updateTypingIndicator();
+                conversationListView.refresh();
+            });
+        } else {
+            stopConversationTyping(conversation);
+            stopExpiryTimer(timerKey);
+        }
+
+        updateTypingIndicator();
+        conversationListView.refresh();
+    }
+
+    @Override
+    public void onPrivateSystemMessage(String peerUsername, String message) {
+        if (peerUsername == null || peerUsername.isBlank()) {
+            appendMessage(groupConversation, Message.systemMessage(message, LocalDateTime.now()), true);
+            return;
+        }
+
+        Conversation conversation = getOrCreatePrivateConversation(peerUsername, onlineUsers.get(peerUsername));
+        appendMessage(conversation, Message.systemMessage(message, LocalDateTime.now()), true);
+    }
+
+    @Override
+    public void onUserAvatarUpdated(String username, byte[] avatarBytes) {
+        String normalizedUsername = normalizeUsername(username);
+        if (normalizedUsername.isBlank()) {
+            return;
+        }
+
+        Image image = buildImageFromBytes(avatarBytes);
+        if (image == null) {
+            return;
+        }
+
+        cacheAvatarImage(normalizedUsername, image);
+
+        if (normalizeUsername(session.getUsername()).equals(normalizedUsername)) {
+            currentUserAvatarImage = image;
+            applyCurrentUserAvatar(image);
+            if (profilePopupController != null) {
+                profilePopupController.setAvatarImage(image);
+                profilePopupController.setStatus("Avatar updated successfully.", false);
+            }
+        }
+
+        Conversation conversation = conversationsById.get(normalizedUsername);
+        if (conversation != null) {
+            conversation.updateAvatarImage(image);
+        }
+
+        boolean shouldRerenderActiveConversation = activeConversation != null
+                && (activeConversation.isGroupConversation()
+                        || normalizedUsername.equals(normalizeUsername(activeConversation.getPeerUsername())));
+        if (shouldRerenderActiveConversation) {
+            renderConversation(activeConversation);
+            updateHeader(activeConversation);
+            updateTypingIndicator();
+        }
+        conversationListView.refresh();
+    }
+
+    @Override
+    public void onConnectionClosed(String message) {
+        if (shuttingDown) {
+            return;
+        }
+
+        shutdown();
+        app.showAuthView(session.getHost(), session.getPort(), message, true);
+    }
+
+    private void bootstrapConversations() {
+        groupConversation = new Conversation(GROUP_CONVERSATION_ID, null, true, "Community Room", "0 people online");
+        conversations.add(groupConversation);
+        conversationsById.put(groupConversation.getId(), groupConversation);
+
+        groupConversation.addMessage(Message.systemMessage(
+                "Welcome back, " + session.getFullName() + ".",
+                LocalDateTime.now().minusMinutes(2)));
+        groupConversation.addMessage(Message.systemMessage(
+                "Choose a person from the sidebar to start a private conversation.",
+                LocalDateTime.now().minusMinutes(1)));
+
+        resortConversations();
+        conversationListView.getSelectionModel().select(groupConversation);
+    }
+
+    private void filterConversations(String query) {
+        String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        filteredConversations.setPredicate(conversation -> {
+            if (normalized.isEmpty()) {
+                return true;
+            }
+
+            return conversation.getTitle().toLowerCase(Locale.ROOT).contains(normalized)
+                    || conversation.getSubtitle().toLowerCase(Locale.ROOT).contains(normalized)
+                    || (conversation.getPeerUsername() != null
+                            && conversation.getPeerUsername().toLowerCase(Locale.ROOT).contains(normalized));
+        });
+    }
+
+    private void selectConversation(Conversation conversation) {
+        if (conversation == null) {
+            return;
+        }
+
+        stopTyping(true);
+        if (activeConversation != null && !activeConversation.equals(conversation)) {
+            clearReply();
+        }
+        activeConversation = conversation;
+        activeConversation.clearUnread();
+        flushPendingSeenReceipts(activeConversation);
+        renderConversation(activeConversation);
+        updateHeader(activeConversation);
+        updateTypingIndicator();
+        messageInputField.requestFocus();
+        conversationListView.refresh();
+    }
+
+    private void renderConversation(Conversation conversation) {
+        messagesContainer.getChildren().clear();
+
+        if (conversation.getMessages().isEmpty()) {
+            emptyStatePane.setVisible(true);
+            emptyStatePane.setManaged(true);
+            emptyStateTitleLabel.setText(conversation.isGroupConversation()
+                    ? "No messages yet"
+                    : "Start a new conversation");
+            emptyStateBodyLabel.setText(conversation.isGroupConversation()
+                    ? "The room is ready. Your first message will show up here."
+                    : "Send a message to " + conversation.getTitle() + " to begin.");
+            return;
+        }
+
+        emptyStatePane.setVisible(false);
+        emptyStatePane.setManaged(false);
+        for (Message message : conversation.getMessages()) {
+            messagesContainer.getChildren().add(createMessageNode(conversation, message, false));
+        }
+        scrollToBottomSoon();
+    }
+
+    private void appendMessage(Conversation conversation, Message message, boolean animate) {
+        if (conversation == null || message == null) {
+            return;
+        }
+
+        conversation.addMessage(message);
+        conversation.clearTyping();
+        resortConversations();
+
+        boolean selectedConversation = conversation.equals(activeConversation);
+        if (!selectedConversation) {
+            conversation.incrementUnread();
+            conversationListView.refresh();
+            return;
+        }
+
+        boolean pinnedToBottom = isPinnedToBottom();
+        emptyStatePane.setVisible(false);
+        emptyStatePane.setManaged(false);
+        messagesContainer.getChildren().add(createMessageNode(conversation, message, animate));
+        if (pinnedToBottom || message.isSentByCurrentUser()) {
+            scrollToBottomSoon();
+        }
+        updateHeader(conversation);
+        conversationListView.refresh();
+    }
+
+    private Node createMessageNode(Conversation conversation, Message message, boolean animate) {
+        try {
+            FXMLLoader loader = new FXMLLoader(UiResources.fxml("views/MessageBubble.fxml"));
+            HBox node = loader.load();
+            MessageBubbleController controller = loader.getController();
+            controller.setMessage(
+                    message,
+                    conversation != null && !conversation.isGroupConversation(),
+                    resolveMessageAvatar(message));
+            controller.setActions(
+                    () -> beginReply(conversation, message),
+                    () -> deleteMessageLocally(conversation, message));
+            if (animate) {
+                controller.playEntrance();
+            }
+            return node;
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to load message bubble.", ex);
+        }
+    }
+
+    private void sendCurrentMessage() {
+        if (activeConversation == null) {
+            return;
+        }
+
+        String text = messageInputField.getText().trim();
+        if (text.isEmpty()) {
+            return;
+        }
+
+        String finalMessage = text;
+        if (replyConversation != null && replyConversation.equals(activeConversation) && replyMessage != null) {
+            finalMessage = Message.composeReplyMessage(buildReplyContext(replyMessage), text);
+        }
+
+        if (activeConversation.isGroupConversation()) {
+            service.sendGroupMessage(finalMessage);
+        } else {
+            service.sendPrivateMessage(activeConversation.getPeerUsername(), UUID.randomUUID().toString(), finalMessage);
+        }
+
+        messageInputField.clear();
+        clearReply();
+        stopTyping(true);
+    }
+
+    private void handleTypingInputChange() {
+        if (activeConversation == null) {
+            return;
+        }
+
+        String currentText = messageInputField.getText().trim();
+        if (currentText.isEmpty()) {
+            stopTyping(true);
+            return;
+        }
+
+        if (localTypingConversation != null && !localTypingConversation.equals(activeConversation)) {
+            stopTyping(true);
+        }
+
+        long now = System.currentTimeMillis();
+        if (!localTypingActive || now - lastTypingSentAt > 900) {
+            localTypingConversation = activeConversation;
+            localTypingActive = true;
+            lastTypingSentAt = now;
+            if (activeConversation.isGroupConversation()) {
+                service.sendGroupTyping(true);
+            } else {
+                service.sendPrivateTyping(activeConversation.getPeerUsername(), true);
+            }
+        }
+
+        localTypingIdleTimer.playFromStart();
+    }
+
+    private void stopTyping(boolean sendStop) {
+        localTypingIdleTimer.stop();
+        if (!localTypingActive || localTypingConversation == null) {
+            return;
+        }
+
+        if (sendStop) {
+            if (localTypingConversation.isGroupConversation()) {
+                service.sendGroupTyping(false);
+            } else if (localTypingConversation.getPeerUsername() != null) {
+                service.sendPrivateTyping(localTypingConversation.getPeerUsername(), false);
+            }
+        }
+
+        localTypingActive = false;
+        lastTypingSentAt = 0;
+        localTypingConversation = null;
+    }
+
+    private void updateHeader(Conversation conversation) {
+        if (conversation == null) {
+            chatTitleLabel.setText("No conversation selected");
+            chatStatusLabel.setText("");
+            chatStatusDot.setVisible(false);
+            headerAvatarLabel.setText("?");
+            applyHeaderAvatar(null, "?");
+            return;
+        }
+
+        applyHeaderAvatar(conversation.getAvatarImage(), conversation.avatarTextProperty().get());
+        chatTitleLabel.setText(conversation.getTitle());
+        chatStatusLabel.setText(conversation.getStatusText());
+        chatStatusDot.setVisible(!conversation.isGroupConversation() && conversation.isOnline());
+    }
+
+    private void updateTypingIndicator() {
+        String text = "";
+
+        if (activeConversation == null) {
+            typingIndicatorLabel.setVisible(false);
+            typingIndicatorLabel.setManaged(false);
+            return;
+        }
+
+        if (activeConversation.isGroupConversation()) {
+            if (!groupTypingUsers.isEmpty()) {
+                text = buildGroupTypingText();
+            }
+        } else if (activeConversation.isTyping()) {
+            text = activeConversation.getSubtitle();
+        }
+
+        typingIndicatorLabel.setText(text);
+        boolean visible = !text.isBlank();
+        typingIndicatorLabel.setVisible(visible);
+        typingIndicatorLabel.setManaged(visible);
+    }
+
+    private Conversation getOrCreatePrivateConversation(String username, String displayName) {
+        String normalizedUsername = username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
+        Conversation existing = conversationsById.get(normalizedUsername);
+        if (existing != null) {
+            if (displayName != null && !displayName.isBlank()) {
+                existing.updateTitle(cleanDisplayName(displayName, normalizedUsername));
+            }
+            existing.updateAvatarImage(lookupAvatarImage(normalizedUsername));
+            return existing;
+        }
+
+        String title = cleanDisplayName(displayName, normalizedUsername);
+        Conversation conversation = new Conversation(normalizedUsername, normalizedUsername, false, title, "Offline");
+        conversation.seedPreview("Start a conversation", "");
+        conversation.setOnline(onlineUsers.containsKey(normalizedUsername));
+        conversation.updateStatusText(conversation.isOnline() ? "Online" : "Offline");
+        conversation.updateAvatarImage(lookupAvatarImage(normalizedUsername));
+
+        conversationsById.put(normalizedUsername, conversation);
+        conversations.add(conversation);
+        resortConversations();
+        return conversation;
+    }
+
+    private void stopConversationTyping(Conversation conversation) {
+        if (conversation == null) {
+            return;
+        }
+
+        conversation.clearTyping();
+        if (conversation.getPeerUsername() != null) {
+            stopExpiryTimer("pm:" + conversation.getPeerUsername());
+        }
+    }
+
+    private void beginReply(Conversation conversation, Message message) {
+        if (conversation == null || message == null || message.isSystemMessage()) {
+            return;
+        }
+
+        replyConversation = conversation;
+        replyMessage = message;
+        replyPreviewTitleLabel.setText("Dang tra loi " + resolveReplyAuthor(message));
+        replyPreviewBodyLabel.setText(buildReplyPreviewText(message));
+        replyPreviewPane.setManaged(true);
+        replyPreviewPane.setVisible(true);
+        messageInputField.requestFocus();
+    }
+
+    private void clearReply() {
+        replyConversation = null;
+        replyMessage = null;
+        replyPreviewPane.setManaged(false);
+        replyPreviewPane.setVisible(false);
+        replyPreviewTitleLabel.setText("");
+        replyPreviewBodyLabel.setText("");
+    }
+
+    private void deleteMessageLocally(Conversation conversation, Message message) {
+        if (conversation == null || message == null) {
+            return;
+        }
+
+        conversation.removeMessage(message);
+        if (message.equals(replyMessage)) {
+            clearReply();
+        }
+
+        if (conversation.equals(activeConversation)) {
+            renderConversation(conversation);
+            updateTypingIndicator();
+        }
+        conversationListView.refresh();
+    }
+
+    private void sendImageAttachment(Conversation conversation, Path imagePath) {
+        if (conversation == null || imagePath == null || service == null) {
+            return;
+        }
+
+        String fileName = normalizeAttachmentName(pathFileName(imagePath), "image", 120);
+        byte[] imageBytes = readAttachmentBytes(imagePath, MAX_IMAGE_BYTES, "Image", conversation);
+        if (imageBytes == null) {
+            return;
+        }
+
+        if (!isValidImage(imageBytes)) {
+            appendLocalSystemMessage(conversation, "Selected file is not a valid image.");
+            return;
+        }
+
+        String mimeType = detectMimeType(imagePath, fileName, "image/");
+        if (conversation.isGroupConversation()) {
+            service.sendGroupImage(fileName, mimeType, imageBytes);
+            return;
+        }
+
+        service.sendPrivateImage(conversation.getPeerUsername(), fileName, mimeType, imageBytes);
+    }
+
+    private void sendFileAttachment(Conversation conversation, Path filePath) {
+        if (conversation == null || filePath == null || service == null) {
+            return;
+        }
+
+        String fileName = normalizeAttachmentName(pathFileName(filePath), "file", 160);
+        byte[] fileBytes = readAttachmentBytes(filePath, MAX_FILE_BYTES, "File", conversation);
+        if (fileBytes == null) {
+            return;
+        }
+
+        String mimeType = detectMimeType(filePath, fileName, "application/");
+        if (conversation.isGroupConversation()) {
+            service.sendGroupFile(fileName, mimeType, fileBytes);
+            return;
+        }
+
+        service.sendPrivateFile(conversation.getPeerUsername(), fileName, mimeType, fileBytes);
+    }
+
+    private void showProfilePopup() {
+        if (rootPane.getScene() == null) {
+            return;
+        }
+
+        if (profilePopupStage != null && profilePopupStage.isShowing()) {
+            profilePopupStage.requestFocus();
+            return;
+        }
+
+        try {
+            FXMLLoader loader = new FXMLLoader(UiResources.fxml("views/ProfilePopup.fxml"));
+            VBox root = loader.load();
+            ProfilePopupController controller = loader.getController();
+            controller.setProfile(session.getFullName(), session.getUsername(), buildAvatar(session.getFullName()));
+            controller.setAvatarImage(currentUserAvatarImage);
+            controller.setOnAvatarSelected(this::startAvatarUpload);
+            if (rootPane.getStyleClass().contains("theme-dark")) {
+                root.getStyleClass().add("theme-dark");
+            }
+
+            javafx.scene.Scene scene = new javafx.scene.Scene(root);
+            String stylesheet = UiResources.stylesheet("css/MessengerStyle.css");
+            if (!stylesheet.isBlank()) {
+                scene.getStylesheets().setAll(stylesheet);
+            }
+
+            Stage stage = new Stage(StageStyle.UTILITY);
+            stage.initOwner(rootPane.getScene().getWindow());
+            stage.initModality(Modality.WINDOW_MODAL);
+            stage.setResizable(false);
+            stage.setTitle("Profile");
+            stage.setScene(scene);
+            stage.setOnHidden(event -> {
+                profilePopupStage = null;
+                profilePopupController = null;
+            });
+
+            profilePopupController = controller;
+            profilePopupStage = stage;
+            stage.show();
+        } catch (IOException ex) {
+            appendLocalSystemMessage(groupConversation, "Unable to open profile popup.");
+        }
+    }
+
+    private void startAvatarUpload(Path imagePath) {
+        if (imagePath == null || service == null) {
+            return;
+        }
+
+        if (profilePopupController != null) {
+            profilePopupController.setStatus("Uploading avatar...", false);
+        }
+
+        Thread worker = new Thread(() -> {
+            byte[] avatarBytes = encodeAvatarAsPng(imagePath);
+            if (avatarBytes == null) {
+                return;
+            }
+
+            service.sendAvatarUpdate(avatarBytes);
+        }, "fx-avatar-upload");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void flushPendingSeenReceipts(Conversation conversation) {
+        if (conversation == null || conversation.isGroupConversation()) {
+            return;
+        }
+
+        for (String messageId : conversation.consumePendingSeenMessageIds()) {
+            sendSeenReceipt(conversation, messageId);
+        }
+    }
+
+    private void sendSeenReceipt(Conversation conversation, String messageId) {
+        if (conversation == null || conversation.isGroupConversation()) {
+            return;
+        }
+
+        String peerUsername = conversation.getPeerUsername();
+        String safeMessageId = messageId == null ? "" : messageId.trim();
+        if (peerUsername == null || peerUsername.isBlank() || safeMessageId.isEmpty()) {
+            return;
+        }
+
+        service.sendPrivateSeen(peerUsername, safeMessageId);
+    }
+
+    private void restartExpiryTimer(String key, Runnable action) {
+        PauseTransition timer = typingExpiryTimers.computeIfAbsent(key, unused -> new PauseTransition(Duration.seconds(2.5)));
+        timer.stop();
+        timer.setOnFinished(event -> action.run());
+        timer.playFromStart();
+    }
+
+    private void stopExpiryTimer(String key) {
+        PauseTransition timer = typingExpiryTimers.remove(key);
+        if (timer != null) {
+            timer.stop();
+        }
+    }
+
+    private String buildGroupTypingText() {
+        List<String> names = new ArrayList<>(groupTypingUsers.values());
+        if (names.isEmpty()) {
+            return "";
+        }
+        if (names.size() == 1) {
+            return names.get(0) + " đang soạn tin...";
+        }
+        return names.size() + " people are typing...";
+    }
+
+    private String formatOnlineCount(int totalOnline) {
+        if (totalOnline == 1) {
+            return "1 đang online";
+        }
+        return totalOnline + " đang online";
+    }
+
+    private ParsedGroupMessage parseGroupMessage(String rawLine) {
+        String line = rawLine == null ? "" : rawLine.trim();
+        if (line.isEmpty()) {
+            return null;
+        }
+
+        if (line.startsWith("[System]") || line.startsWith("[He thong]")) {
+            return new ParsedGroupMessage(Message.systemMessage(line, LocalDateTime.now()), true, "");
+        }
+
+        Matcher matcher = TIME_AND_BODY.matcher(line);
+        if (!matcher.matches()) {
+            return new ParsedGroupMessage(Message.systemMessage(line, LocalDateTime.now()), true, "");
+        }
+
+        String timeText = matcher.group(1).trim();
+        String body = matcher.group(2) == null ? "" : matcher.group(2).trim();
+        if (body.startsWith("[He thong]")) {
+            return new ParsedGroupMessage(Message.systemMessage("[" + timeText + "] " + body, parseServerTime(timeText)), true, "");
+        }
+
+        int separator = body.indexOf(": ");
+        if (separator <= 0) {
+            return new ParsedGroupMessage(Message.systemMessage(line, parseServerTime(timeText)), true, "");
+        }
+
+        String displayName = body.substring(0, separator).trim();
+        String messageText = body.substring(separator + 2).trim();
+        String username = extractUsername(displayName);
+        String cleanName = cleanDisplayName(displayName, username);
+        boolean sentByCurrentUser = username != null && username.equalsIgnoreCase(session.getUsername());
+
+        Message message = Message.userMessage(
+                UUID.randomUUID().toString(),
+                username == null ? "" : username,
+                sentByCurrentUser ? session.getFullName() : cleanName,
+                messageText,
+                sentByCurrentUser,
+                parseServerTime(timeText));
+
+        return new ParsedGroupMessage(message, false, username == null ? "" : username);
+    }
+
+    private LocalDateTime parseServerTime(String timeText) {
+        if (timeText == null || timeText.isBlank()) {
+            return LocalDateTime.now();
+        }
+
+        try {
+            return LocalDateTime.of(LocalDate.now(), LocalTime.parse(timeText.trim(), SERVER_TIME));
+        } catch (DateTimeParseException ignored) {
+        }
+
+        try {
+            return LocalDateTime.of(LocalDate.now(), LocalTime.parse(timeText.trim(), FALLBACK_TIME));
+        } catch (DateTimeParseException ignored) {
+        }
+
+        return LocalDateTime.now();
+    }
+
+    private void resortConversations() {
+        Conversation selected = activeConversation;
+        suppressConversationSelectionHandling = true;
+        try {
+            FXCollections.sort(conversations, (left, right) -> {
+                if (left.isGroupConversation() && !right.isGroupConversation()) {
+                    return -1;
+                }
+                if (!left.isGroupConversation() && right.isGroupConversation()) {
+                    return 1;
+                }
+
+                int byActivity = Long.compare(right.getLastActivityEpochMillis(), left.getLastActivityEpochMillis());
+                if (byActivity != 0) {
+                    return byActivity;
+                }
+
+                return left.getTitle().compareToIgnoreCase(right.getTitle());
+            });
+
+            if (selected != null) {
+                conversationListView.getSelectionModel().select(selected);
+            }
+        } finally {
+            suppressConversationSelectionHandling = false;
+        }
+    }
+
+    private boolean isPinnedToBottom() {
+        double contentHeight = messagesContainer.getBoundsInLocal().getHeight();
+        double viewportHeight = messagesScrollPane.getViewportBounds().getHeight();
+        if (contentHeight <= viewportHeight + 4) {
+            return true;
+        }
+        return messagesScrollPane.getVvalue() >= 0.96;
+    }
+
+    private void scrollToBottomSoon() {
+        javafx.application.Platform.runLater(() -> {
+            messagesScrollPane.layout();
+            messagesScrollPane.setVvalue(1.0);
+        });
+    }
+
+    private String extractUsername(String displayName) {
+        if (displayName == null || displayName.isBlank()) {
+            return null;
+        }
+
+        Matcher matcher = USERNAME_AT_END.matcher(displayName.trim());
+        if (!matcher.find()) {
+            return displayName.trim().toLowerCase(Locale.ROOT);
+        }
+        return matcher.group(1).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String cleanDisplayName(String displayName, String username) {
+        if (displayName == null || displayName.isBlank()) {
+            return username == null ? "Unknown" : username;
+        }
+
+        String value = displayName.trim();
+        Matcher matcher = USERNAME_AT_END.matcher(value);
+        if (matcher.find()) {
+            value = value.substring(0, matcher.start()).trim();
+        }
+        return value.isBlank() ? (username == null ? "Unknown" : username) : value;
+    }
+
+    private String buildAvatar(String name) {
+        if (name == null || name.isBlank()) {
+            return "?";
+        }
+
+        String[] parts = name.trim().split("\\s+");
+        if (parts.length == 1) {
+            return parts[0].substring(0, Math.min(2, parts[0].length())).toUpperCase(Locale.ROOT);
+        }
+        return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase(Locale.ROOT);
+    }
+
+    private void cacheAvatarImage(String username, Image image) {
+        String normalizedUsername = normalizeUsername(username);
+        if (normalizedUsername.isBlank() || image == null || image.isError()) {
+            return;
+        }
+
+        avatarImagesByUsername.put(normalizedUsername, image);
+    }
+
+    private Image lookupAvatarImage(String username) {
+        String normalizedUsername = normalizeUsername(username);
+        if (normalizedUsername.isBlank()) {
+            return null;
+        }
+
+        return avatarImagesByUsername.get(normalizedUsername);
+    }
+
+    private Image resolveMessageAvatar(Message message) {
+        if (message == null || message.isSystemMessage()) {
+            return null;
+        }
+
+        return lookupAvatarImage(message.getSenderUsername());
+    }
+
+    private String buildReplyContext(Message message) {
+        return "Tra loi " + resolveReplyAuthor(message) + ": " + buildReplyPreviewText(message);
+    }
+
+    private String buildReplyPreviewText(Message message) {
+        String content = message.getReplySourceText();
+        if (content.length() <= 80) {
+            return content;
+        }
+        return content.substring(0, 80) + "...";
+    }
+
+    private String resolveReplyAuthor(Message message) {
+        if (message.getSenderDisplayName() != null && !message.getSenderDisplayName().isBlank()) {
+            return message.getSenderDisplayName();
+        }
+        if (message.getSenderUsername() != null && !message.getSenderUsername().isBlank()) {
+            return message.getSenderUsername();
+        }
+        return "Unknown";
+    }
+
+    private void clearIncomingGroupTyping(String fromUsername) {
+        String normalizedUsername = normalizeUsername(fromUsername);
+        if (normalizedUsername.isBlank()) {
+            return;
+        }
+
+        groupTypingUsers.remove(normalizedUsername);
+        stopExpiryTimer("group:" + normalizedUsername);
+        if (groupTypingUsers.isEmpty()) {
+            groupConversation.clearTyping();
+        } else {
+            groupConversation.showTyping(buildGroupTypingText());
+        }
+    }
+
+    private Path promptForAttachment(boolean imageOnly) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(imageOnly ? "Choose an image" : "Choose a file");
+        chooser.getExtensionFilters().clear();
+        if (imageOnly) {
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
+                    "Image Files", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp"));
+        } else {
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All Files", "*.*"));
+        }
+
+        java.io.File selectedFile = chooser.showOpenDialog(rootPane.getScene().getWindow());
+        return selectedFile == null ? null : selectedFile.toPath();
+    }
+
+    private void configureAttachmentButton(Button button, String iconPath, String fallbackText, String tooltipText) {
+        if (button == null) {
+            return;
+        }
+
+        button.setText("");
+        button.setTooltip(new javafx.scene.control.Tooltip(tooltipText));
+        Image iconImage = UiResources.image(iconPath);
+        if (iconImage == null || iconImage.isError()) {
+            button.setText(fallbackText);
+            return;
+        }
+
+        ImageView imageView = new ImageView(iconImage);
+        imageView.setFitWidth(18);
+        imageView.setFitHeight(18);
+        imageView.setPreserveRatio(true);
+        button.setGraphic(imageView);
+    }
+
+    private byte[] readAttachmentBytes(Path filePath, int maxBytes, String label, Conversation conversation) {
+        try {
+            if (!Files.exists(filePath)) {
+                appendLocalSystemMessage(conversation, label + " file no longer exists.");
+                return null;
+            }
+
+            long sizeBytes = Files.size(filePath);
+            if (sizeBytes <= 0) {
+                appendLocalSystemMessage(conversation, label + " file is empty.");
+                return null;
+            }
+            if (sizeBytes > maxBytes) {
+                appendLocalSystemMessage(conversation,
+                        label + " exceeds the limit of " + (maxBytes / (1024 * 1024)) + "MB.");
+                return null;
+            }
+
+            byte[] bytes = Files.readAllBytes(filePath);
+            if (bytes.length == 0) {
+                appendLocalSystemMessage(conversation, label + " file is empty.");
+                return null;
+            }
+            if (bytes.length > maxBytes) {
+                appendLocalSystemMessage(conversation,
+                        label + " exceeds the limit of " + (maxBytes / (1024 * 1024)) + "MB.");
+                return null;
+            }
+            return bytes;
+        } catch (IOException ex) {
+            appendLocalSystemMessage(conversation, "Unable to read " + label.toLowerCase(Locale.ROOT) + ": " + ex.getMessage());
+            return null;
+        }
+    }
+
+    private byte[] encodeAvatarAsPng(Path imagePath) {
+        try (InputStream inputStream = Files.newInputStream(imagePath)) {
+            BufferedImage bufferedImage = ImageIO.read(inputStream);
+            if (bufferedImage == null) {
+                updateProfilePopupStatus("Selected file is not a valid image.", true);
+                return null;
+            }
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            if (!ImageIO.write(bufferedImage, "png", outputStream)) {
+                updateProfilePopupStatus("Unable to convert avatar image.", true);
+                return null;
+            }
+
+            byte[] avatarBytes = outputStream.toByteArray();
+            if (avatarBytes.length == 0) {
+                updateProfilePopupStatus("Avatar image is empty.", true);
+                return null;
+            }
+            if (avatarBytes.length > MAX_IMAGE_BYTES) {
+                updateProfilePopupStatus("Avatar exceeds the limit of 2MB.", true);
+                return null;
+            }
+
+            return avatarBytes;
+        } catch (IOException ex) {
+            updateProfilePopupStatus("Unable to read avatar: " + ex.getMessage(), true);
+            return null;
+        }
+    }
+
+    private void appendLocalSystemMessage(Conversation conversation, String text) {
+        javafx.application.Platform.runLater(() -> appendMessage(
+                conversation == null ? groupConversation : conversation,
+                Message.systemMessage(text, LocalDateTime.now()),
+                true));
+    }
+
+    private boolean isValidImage(byte[] imageBytes) {
+        try (InputStream inputStream = new ByteArrayInputStream(imageBytes)) {
+            return ImageIO.read(inputStream) != null;
+        } catch (IOException ex) {
+            return false;
+        }
+    }
+
+    private String detectMimeType(Path path, String fileName, String expectedPrefix) {
+        try {
+            String probed = Files.probeContentType(path);
+            if (probed != null && !probed.isBlank()) {
+                return probed.trim();
+            }
+        } catch (IOException ignored) {
+        }
+
+        String lowerName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        if (expectedPrefix.startsWith("image/")) {
+            if (lowerName.endsWith(".png")) {
+                return "image/png";
+            }
+            if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+                return "image/jpeg";
+            }
+            if (lowerName.endsWith(".gif")) {
+                return "image/gif";
+            }
+            if (lowerName.endsWith(".bmp")) {
+                return "image/bmp";
+            }
+            if (lowerName.endsWith(".webp")) {
+                return "image/webp";
+            }
+            return "image/png";
+        }
+
+        return "application/octet-stream";
+    }
+
+    private String pathFileName(Path path) {
+        if (path == null || path.getFileName() == null) {
+            return "";
+        }
+        return path.getFileName().toString();
+    }
+
+    private String normalizeAttachmentName(String value, String fallback, int maxLength) {
+        String safeValue = value == null ? "" : value.trim();
+        if (safeValue.isBlank()) {
+            safeValue = fallback;
+        }
+        if (safeValue.length() > maxLength) {
+            return safeValue.substring(0, maxLength);
+        }
+        return safeValue;
+    }
+
+    private boolean isCurrentUser(String username) {
+        return normalizeUsername(username).equals(normalizeUsername(session.getUsername()));
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void loadCurrentUserAvatarFromDisk() {
+        try {
+            Path avatarPath = StoragePaths.avatarDirectory().resolve(session.getUsername() + ".png");
+            if (!Files.exists(avatarPath)) {
+                currentUserAvatarImage = null;
+                return;
+            }
+
+            currentUserAvatarImage = buildImageFromBytes(Files.readAllBytes(avatarPath));
+        } catch (IOException ignored) {
+            currentUserAvatarImage = null;
+        }
+    }
+
+    private Image buildImageFromBytes(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+
+        Image image = new Image(new ByteArrayInputStream(bytes));
+        if (image.isError()) {
+            return null;
+        }
+        return image;
+    }
+
+    private void applyCurrentUserAvatar(Image image) {
+        boolean hasImage = image != null && !image.isError();
+        currentUserAvatarImageView.setImage(image);
+        currentUserAvatarImageView.setManaged(hasImage);
+        currentUserAvatarImageView.setVisible(hasImage);
+        currentUserAvatarLabel.setManaged(!hasImage);
+        currentUserAvatarLabel.setVisible(!hasImage);
+    }
+
+    private void applyHeaderAvatar(Image image, String fallbackText) {
+        boolean hasImage = image != null && !image.isError();
+        headerAvatarImageView.setImage(image);
+        headerAvatarImageView.setManaged(hasImage);
+        headerAvatarImageView.setVisible(hasImage);
+        headerAvatarLabel.setText((fallbackText == null || fallbackText.isBlank()) ? "?" : fallbackText.trim());
+        headerAvatarLabel.setManaged(!hasImage);
+        headerAvatarLabel.setVisible(!hasImage);
+    }
+
+    private void updateAvatarPaneStyle(StackPane avatarPane, Image image) {
+        if (avatarPane == null) {
+            return;
+        }
+
+        boolean hasImage = image != null && !image.isError();
+        if (hasImage) {
+            if (!avatarPane.getStyleClass().contains("avatar-has-image")) {
+                avatarPane.getStyleClass().add("avatar-has-image");
+            }
+            return;
+        }
+
+        avatarPane.getStyleClass().remove("avatar-has-image");
+    }
+
+    private void updateProfilePopupStatus(String message, boolean error) {
+        javafx.application.Platform.runLater(() -> {
+            if (profilePopupController != null) {
+                profilePopupController.setStatus(message, error);
+            }
+        });
+    }
+
+    private record ParsedGroupMessage(Message message, boolean systemMessage, String senderUsername) {
+    }
+}

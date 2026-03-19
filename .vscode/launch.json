@@ -3,6 +3,13 @@
   "configurations": [
     {
       "type": "java",
+      "name": "FxChatView",
+      "request": "launch",
+      "mainClass": "FxChatView",
+      "projectName": "chatboxjava_ab0ee2e6"
+    },
+    {
+      "type": "java",
       "name": "Run JavaFX (chatbox/App)",
       "request": "launch",
       "mainClass": "App",

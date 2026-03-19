@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<HBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+        fx:controller="controllers.MessageBubbleController"
+        fx:id="root"
+        alignment="TOP_LEFT"
+        spacing="12.0"
+        styleClass="message-row">
+    <children>
+        <Region fx:id="leadingSpacer" HBox.hgrow="ALWAYS" />
+
+        <StackPane fx:id="avatarPane" styleClass="message-avatar">
+            <children>
+                <ImageView fx:id="avatarImageView" fitHeight="34.0" fitWidth="34.0"
+                        managed="false" preserveRatio="true" smooth="true" visible="false" />
+                <Label fx:id="avatarLabel" styleClass="message-avatar-text" text="AL" />
+            </children>
+        </StackPane>
+
+        <VBox fx:id="contentBox" maxWidth="500.0" spacing="4.0">
+            <children>
+                <Label fx:id="metaLabel" styleClass="message-meta" text="10:42  Alice" />
+                <HBox fx:id="bubbleRow" alignment="TOP_LEFT" spacing="8.0">
+                    <children>
+                        <VBox fx:id="bubbleStack" maxWidth="420.0" spacing="5.0">
+                            <children>
+                                <Label fx:id="replyPreviewLabel" maxWidth="420.0" styleClass="reply-preview-bubble"
+                                        text="Replying to Alice: Hello" visible="false" managed="false" wrapText="true" />
+                                <Label fx:id="bubbleLabel" maxWidth="420.0" styleClass="message-bubble"
+                                        text="Hello there" wrapText="true" />
+                                <VBox fx:id="imageAttachmentPane" maxWidth="420.0" spacing="8.0"
+                                        styleClass="attachment-bubble" visible="false" managed="false">
+                                    <children>
+                                        <StackPane styleClass="image-attachment-frame">
+                                            <children>
+                                                <ImageView fx:id="attachmentImageView" fitWidth="340.0"
+                                                        preserveRatio="true" smooth="true" />
+                                            </children>
+                                        </StackPane>
+                                        <HBox alignment="CENTER_LEFT" spacing="10.0">
+                                            <children>
+                                                <VBox spacing="2.0" HBox.hgrow="ALWAYS">
+                                                    <children>
+                                                        <Label fx:id="imageAttachmentNameLabel" styleClass="attachment-title"
+                                                                text="photo.png" />
+                                                        <Label fx:id="imageAttachmentMetaLabel" styleClass="attachment-meta"
+                                                                text="Image 120 KB" />
+                                                    </children>
+                                                </VBox>
+                                                <Button fx:id="imageSaveButton" mnemonicParsing="false"
+                                                        onAction="#onSaveImageAttachment"
+                                                        styleClass="attachment-save-button" text="Save" />
+                                            </children>
+                                        </HBox>
+                                    </children>
+                                </VBox>
+                                <HBox fx:id="fileAttachmentPane" alignment="CENTER_LEFT" maxWidth="420.0"
+                                        spacing="12.0" styleClass="file-attachment-bubble"
+                                        visible="false" managed="false">
+                                    <children>
+                                        <Label styleClass="file-attachment-icon" text="📎" />
+                                        <VBox spacing="2.0" HBox.hgrow="ALWAYS">
+                                            <children>
+                                                <Label fx:id="fileAttachmentNameLabel" styleClass="attachment-title"
+                                                        text="report.pdf" />
+                                                <Label fx:id="fileAttachmentMetaLabel" styleClass="attachment-meta"
+                                                        text="application/pdf  2.1 MB" />
+                                            </children>
+                                        </VBox>
+                                        <Button fx:id="fileSaveButton" mnemonicParsing="false"
+                                                onAction="#onSaveFileAttachment"
+                                                styleClass="attachment-save-button" text="Save" />
+                                    </children>
+                                </HBox>
+                            </children>
+                        </VBox>
+                        <Button fx:id="actionsButton" mnemonicParsing="false" onAction="#onShowActions"
+                                styleClass="message-actions-button" text="⋯" />
+                    </children>
+                </HBox>
+                <Label fx:id="statusLabel" styleClass="message-status" text="Da xem" visible="false" managed="false" />
+            </children>
+        </VBox>
+
+        <Region fx:id="trailingSpacer" HBox.hgrow="ALWAYS" />
+    </children>
+</HBox>

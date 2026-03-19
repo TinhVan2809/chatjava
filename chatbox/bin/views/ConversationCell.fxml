@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
+<?import javafx.scene.text.Text?>
+
+<HBox fx:id="container" alignment="CENTER_LEFT" spacing="12" styleClass="conversation-cell-container" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1">
+    <children>
+        <ImageView fx:id="avatarImageView" fitHeight="56.0" fitWidth="56.0" pickOnBounds="true" preserveRatio="true">
+            <clip>
+                <Circle radius="28" centerX="28" centerY="28" />
+            </clip>
+        </ImageView>
+        <VBox HBox.hgrow="ALWAYS">
+            <children>
+                <Text fx:id="contactNameText" styleClass="conversation-name" text="Contact Name" />
+                <Text fx:id="lastMessageText" styleClass="conversation-last-message" text="Last message goes here..." />
+            </children>
+        </VBox>
+        <Label fx:id="timestampLabel" styleClass="conversation-timestamp" text="10:42" />
+    </children>
+</HBox>

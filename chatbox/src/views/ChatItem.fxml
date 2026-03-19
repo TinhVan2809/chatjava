@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
+
+<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+        fx:controller="controllers.ChatItemController"
+        fx:id="rootPane"
+        maxWidth="1.7976931348623157E308"
+        styleClass="chat-item-shell">
+    <children>
+        <HBox alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" spacing="14.0" styleClass="chat-item">
+            <children>
+                <StackPane fx:id="avatarPane" styleClass="chat-item-avatar">
+                    <children>
+                        <ImageView fx:id="avatarImageView" fitHeight="44.0" fitWidth="44.0"
+                                managed="false" preserveRatio="true" smooth="true" visible="false" />
+                        <Label fx:id="avatarLabel" styleClass="chat-item-avatar-text" text="GR" />
+                    </children>
+                </StackPane>
+
+                <VBox maxWidth="1.7976931348623157E308" spacing="4.0" HBox.hgrow="ALWAYS">
+                    <children>
+                        <HBox alignment="CENTER_LEFT" spacing="10.0">
+                            <children>
+                                <Label fx:id="titleLabel" maxWidth="1.7976931348623157E308" minWidth="0.0"
+                                        styleClass="chat-item-title" text="Conversation title" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="timeLabel" styleClass="chat-item-time" text="10:42" />
+                            </children>
+                        </HBox>
+
+                        <HBox alignment="CENTER_LEFT" spacing="8.0">
+                            <children>
+                                <Circle fx:id="statusDot" radius="4.0" styleClass="presence-dot" />
+                                <Label fx:id="subtitleLabel" maxWidth="1.7976931348623157E308" minWidth="0.0"
+                                        styleClass="chat-item-subtitle" text="Latest message preview" HBox.hgrow="ALWAYS" />
+                                <Label fx:id="unreadBadgeLabel" styleClass="unread-badge" text="2" />
+                            </children>
+                        </HBox>
+                    </children>
+                </VBox>
+            </children>
+        </HBox>
+    </children>
+</StackPane>

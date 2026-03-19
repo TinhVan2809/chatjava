@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+        fx:controller="controllers.MessengerController"
+        fx:id="rootPane"
+        styleClass="root-pane,messenger-root">
+    <left>
+        <VBox prefWidth="340.0" styleClass="sidebar">
+            <children>
+                <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="sidebar-header">
+                    <children>
+                        <VBox spacing="2.0" HBox.hgrow="ALWAYS">
+                            <children>
+                                <Label styleClass="sidebar-title" text="Chats" />
+                                <Label styleClass="sidebar-caption" text="Search and jump between conversations" />
+                            </children>
+                        </VBox>
+                        <Button fx:id="themeToggleButton" mnemonicParsing="false" onAction="#onToggleTheme"
+                                styleClass="ghost-button compact-button" text="Dark" />
+                    </children>
+                </HBox>
+
+                <VBox spacing="12.0" styleClass="search-block">
+                    <children>
+                        <TextField fx:id="searchField" promptText="Search chats or usernames"
+                                styleClass="text-input search-input" />
+                    </children>
+                    <padding>
+                        <Insets bottom="14.0" left="20.0" right="20.0" top="0.0" />
+                    </padding>
+                </VBox>
+
+                <ListView fx:id="conversationListView" styleClass="conversation-list" VBox.vgrow="ALWAYS" />
+
+                <HBox alignment="CENTER_LEFT" spacing="14.0" styleClass="profile-card">
+                    <children>
+                        <HBox fx:id="profileSummaryPane" alignment="CENTER_LEFT" spacing="14.0"
+                                onMouseClicked="#onOpenProfile" styleClass="profile-summary" HBox.hgrow="ALWAYS">
+                            <children>
+                                <StackPane fx:id="currentUserAvatarPane" styleClass="profile-avatar">
+                                    <children>
+                                        <ImageView fx:id="currentUserAvatarImageView" fitHeight="44.0" fitWidth="44.0"
+                                                managed="false" pickOnBounds="true" preserveRatio="true" visible="false" />
+                                        <Label fx:id="currentUserAvatarLabel" styleClass="profile-avatar-text" text="ME" />
+                                    </children>
+                                </StackPane>
+                                <VBox spacing="2.0" HBox.hgrow="ALWAYS">
+                                    <children>
+                                        <Label fx:id="currentUserNameLabel" styleClass="profile-name" text="Full Name" />
+                                        <Label fx:id="currentUsernameLabel" styleClass="profile-handle" text="@username" />
+                                    </children>
+                                </VBox>
+                            </children>
+                        </HBox>
+                        <Button mnemonicParsing="false" onAction="#onLogout"
+                                styleClass="secondary-button compact-button" text="Logout" />
+                    </children>
+                    <padding>
+                        <Insets bottom="18.0" left="20.0" right="20.0" top="18.0" />
+                    </padding>
+                </HBox>
+            </children>
+        </VBox>
+    </left>
+
+    <center>
+        <BorderPane styleClass="chat-panel">
+            <top>
+                <HBox alignment="CENTER_LEFT" spacing="14.0" styleClass="chat-header">
+                    <children>
+                        <StackPane fx:id="headerAvatarPane" styleClass="header-avatar">
+                            <children>
+                                <ImageView fx:id="headerAvatarImageView" fitHeight="44.0" fitWidth="44.0"
+                                        managed="false" preserveRatio="true" smooth="true" visible="false" />
+                                <Label fx:id="headerAvatarLabel" styleClass="header-avatar-text" text="GR" />
+                            </children>
+                        </StackPane>
+                        <VBox spacing="3.0" HBox.hgrow="ALWAYS">
+                            <children>
+                                <Label fx:id="chatTitleLabel" styleClass="chat-title" text="Community Room" />
+                                <HBox alignment="CENTER_LEFT" spacing="8.0">
+                                    <children>
+                                        <Circle fx:id="chatStatusDot" radius="4.0" styleClass="presence-dot" />
+                                        <Label fx:id="chatStatusLabel" styleClass="chat-status" text="0 people online" />
+                                    </children>
+                                </HBox>
+                            </children>
+                        </VBox>
+                    </children>
+                    <padding>
+                        <Insets bottom="18.0" left="24.0" right="24.0" top="22.0" />
+                    </padding>
+                </HBox>
+            </top>
+
+            <center>
+                <StackPane styleClass="chat-body">
+                    <children>
+                        <ScrollPane fx:id="messagesScrollPane" fitToWidth="true" hbarPolicy="NEVER"
+                                pannable="true" styleClass="messages-scroll">
+                            <content>
+                                <VBox fx:id="messagesContainer" spacing="14.0" styleClass="messages-container">
+                                    <padding>
+                                        <Insets bottom="24.0" left="24.0" right="24.0" top="24.0" />
+                                    </padding>
+                                </VBox>
+                            </content>
+                        </ScrollPane>
+
+                        <StackPane fx:id="emptyStatePane" styleClass="empty-state">
+                            <children>
+                                <VBox alignment="CENTER" spacing="10.0" maxWidth="360.0">
+                                    <children>
+                                        <Label fx:id="emptyStateTitleLabel" styleClass="empty-state-title" text="No messages yet" />
+                                        <Label fx:id="emptyStateBodyLabel" styleClass="empty-state-copy"
+                                                text="Your first message will show up here." wrapText="true" />
+                                    </children>
+                                </VBox>
+                            </children>
+                        </StackPane>
+                    </children>
+                </StackPane>
+            </center>
+
+            <bottom>
+                <VBox spacing="10.0" styleClass="composer-shell">
+                    <children>
+                        <Label fx:id="typingIndicatorLabel" styleClass="typing-indicator" text="typing..." />
+                        <HBox fx:id="replyPreviewPane" alignment="CENTER_LEFT" spacing="10.0" styleClass="reply-composer">
+                            <children>
+                                <VBox spacing="3.0" HBox.hgrow="ALWAYS">
+                                    <children>
+                                        <Label fx:id="replyPreviewTitleLabel" styleClass="reply-composer-title" text="Dang tra loi Alice" />
+                                        <Label fx:id="replyPreviewBodyLabel" styleClass="reply-composer-body"
+                                                text="Noi dung dang duoc tra loi" wrapText="true" />
+                                    </children>
+                                </VBox>
+                                <Button fx:id="clearReplyButton" mnemonicParsing="false" onAction="#onClearReply"
+                                        styleClass="ghost-button compact-button reply-composer-close" text="×" />
+                            </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="composer-row">
+                            <children>
+                                <TextField fx:id="messageInputField" promptText="Write a message and press Enter"
+                                        styleClass="text-input composer-input" HBox.hgrow="ALWAYS" />
+                                <Button fx:id="sendImageButton" mnemonicParsing="false" onAction="#onSendImage"
+                                        styleClass="ghost-button compact-button composer-tool-button" text="" />
+                                <Button fx:id="sendFileButton" mnemonicParsing="false" onAction="#onSendFile"
+                                        styleClass="ghost-button compact-button composer-tool-button" text="" />
+                                <Button fx:id="sendButton" mnemonicParsing="false" onAction="#onSendMessage"
+                                        styleClass="primary-button" text="Gửi" />
+                            </children>
+                        </HBox>
+                    </children>
+                    <padding>
+                        <Insets bottom="22.0" left="24.0" right="24.0" top="16.0" />
+                    </padding>
+                </VBox>
+            </bottom>
+        </BorderPane>
+    </center>
+</BorderPane>

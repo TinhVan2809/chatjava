@@ -5,8 +5,9 @@
       "type": "java",
       "name": "Run JavaFX",
       "request": "launch",
-      "mainClass": "App",
-      "vmArgs": "--module-path C:/javafx-sdk-21.0.10/lib --add-modules javafx.controls,javafx.fxml,javafx.swing --add-exports javafx.base/com.sun.javafx.logging=ALL-UNNAMED"
+      "mainClass": "core.App",
+      "cwd": "${workspaceFolder}",
+      "vmArgs": "--module-path C:/javafx-sdk-21.0.10/lib --add-modules javafx.controls,javafx.fxml"
     }
   ]
 }

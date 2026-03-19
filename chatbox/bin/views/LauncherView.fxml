@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+        fx:controller="controllers.LauncherController"
+        styleClass="root-pane launcher-root">
+    <children>
+        <VBox maxWidth="1080.0" spacing="28.0" styleClass="launcher-shell">
+            <children>
+                <HBox spacing="28.0">
+                    <children>
+                        <VBox prefWidth="470.0" spacing="18.0" styleClass="launcher-hero">
+                            <children>
+                                <Label styleClass="hero-eyebrow" text="JavaFX Desktop Chat" />
+                                <Label styleClass="hero-title" text="Refactor the UI, keep the realtime socket backend." wrapText="true" />
+                                <Label styleClass="hero-copy"
+                                        text="Launch the server, open the client, and work with a cleaner chat architecture built around FXML, CSS, reusable components, and controllers." wrapText="true" />
+                            </children>
+                        </VBox>
+
+                        <VBox spacing="18.0" styleClass="launcher-card" HBox.hgrow="ALWAYS">
+                            <children>
+                                <Label styleClass="section-title" text="Workspace Launcher" />
+                                <GridPane hgap="12.0" vgap="12.0">
+                                    <columnConstraints>
+                                        <ColumnConstraints minWidth="70.0" />
+                                        <ColumnConstraints hgrow="ALWAYS" />
+                                        <ColumnConstraints minWidth="56.0" />
+                                        <ColumnConstraints minWidth="130.0" />
+                                    </columnConstraints>
+                                    <children>
+                                        <Label styleClass="field-label" text="Host" />
+                                        <TextField fx:id="hostField" promptText="127.0.0.1" styleClass="text-input"
+                                                GridPane.columnIndex="1" />
+                                        <Label styleClass="field-label" text="Port" GridPane.columnIndex="2" />
+                                        <TextField fx:id="portField" promptText="5000" styleClass="text-input"
+                                                GridPane.columnIndex="3" />
+                                    </children>
+                                </GridPane>
+
+                                <HBox spacing="12.0">
+                                    <children>
+                                        <Button fx:id="startServerButton" mnemonicParsing="false" onAction="#onStartServer"
+                                                styleClass="secondary-button" text="Start server" />
+                                        <Button mnemonicParsing="false" onAction="#onOpenClient"
+                                                styleClass="primary-button" text="Open client" />
+                                        <Button mnemonicParsing="false" onAction="#onExit"
+                                                styleClass="ghost-button" text="Exit" />
+                                    </children>
+                                </HBox>
+
+                                <Label fx:id="statusLabel" maxWidth="1.7976931348623157E308"
+                                        styleClass="status-banner" text="Use one app instance for the server and open another for clients." />
+                            </children>
+                            <padding>
+                                <Insets bottom="28.0" left="28.0" right="28.0" top="28.0" />
+                            </padding>
+                        </VBox>
+                    </children>
+                </HBox>
+
+                <HBox spacing="16.0">
+                    <children>
+                        <VBox styleClass="info-card" HBox.hgrow="ALWAYS">
+                            <children>
+                                <Label styleClass="info-card-title" text="Architecture" />
+                                <Label styleClass="info-card-copy" text="FXML views, dedicated controllers, shared CSS, and a separate socket service layer." wrapText="true" />
+                            </children>
+                            <padding>
+                                <Insets bottom="18.0" left="18.0" right="18.0" top="18.0" />
+                            </padding>
+                        </VBox>
+                        <VBox styleClass="info-card" HBox.hgrow="ALWAYS">
+                            <children>
+                                <Label styleClass="info-card-title" text="Realtime UX" />
+                                <Label styleClass="info-card-copy" text="Private chat, presence, typing state, auto-scroll, and animated message bubbles." wrapText="true" />
+                            </children>
+                            <padding>
+                                <Insets bottom="18.0" left="18.0" right="18.0" top="18.0" />
+                            </padding>
+                        </VBox>
+                        <VBox styleClass="info-card" HBox.hgrow="ALWAYS">
+                            <children>
+                                <Label styleClass="info-card-title" text="Maintainability" />
+                                <Label styleClass="info-card-copy" text="Reusable chat items, cleaner state handling, and resource loading that works in the current repo layout." wrapText="true" />
+                            </children>
+                            <padding>
+                                <Insets bottom="18.0" left="18.0" right="18.0" top="18.0" />
+                            </padding>
+                        </VBox>
+                    </children>
+                </HBox>
+            </children>
+            <padding>
+                <Insets bottom="32.0" left="32.0" right="32.0" top="32.0" />
+            </padding>
+        </VBox>
+    </children>
+</StackPane>
