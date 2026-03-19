@@ -6,6 +6,7 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.text.TextFlow?>
 <?import javafx.scene.layout.VBox?>
 
 <HBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
@@ -32,10 +33,9 @@
                     <children>
                         <VBox fx:id="bubbleStack" maxWidth="420.0" spacing="5.0">
                             <children>
-                                <Label fx:id="replyPreviewLabel" maxWidth="420.0" styleClass="reply-preview-bubble"
-                                        text="Replying to Alice: Hello" visible="false" managed="false" wrapText="true" />
-                                <Label fx:id="bubbleLabel" maxWidth="420.0" styleClass="message-bubble"
-                                        text="Hello there" wrapText="true" />
+                                <TextFlow fx:id="replyPreviewFlow" maxWidth="420.0" styleClass="reply-preview-bubble"
+                                        visible="false" managed="false" />
+                                <TextFlow fx:id="bubbleFlow" maxWidth="420.0" styleClass="message-bubble" />
                                 <VBox fx:id="imageAttachmentPane" maxWidth="420.0" spacing="8.0"
                                         styleClass="attachment-bubble" visible="false" managed="false">
                                     <children>

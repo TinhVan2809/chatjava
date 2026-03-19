@@ -26,9 +26,9 @@
                         <Button mnemonicParsing="false" onAction="#onBack" styleClass="secondary-button ghost-button"
                                 text="Back" />
                         <Label styleClass="hero-eyebrow" text="Realtime Messenger" />
-                        <Label styleClass="hero-title" text="JavaFX chat UI refactored for real production work." wrapText="true" />
+                        <Label styleClass="hero-title" text="Java chat UI refactored for real production work." wrapText="true" />
                         <Label styleClass="hero-copy"
-                                text="Keep the socket backend, move the client UI to FXML + controllers + CSS, and make the experience feel like a real chat product." wrapText="true" />
+                                text="Ứng dụng trò chuyện trực tuyến. Chúng tôi luôn cung cấp một môi trường phù hợp ứng với thực tiễn của bạn." wrapText="true" />
                         <VBox spacing="10.0" styleClass="hero-points">
                             <children>
                                 <Label styleClass="hero-point" text="Reusable chat items and message bubbles" />

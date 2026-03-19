@@ -15,6 +15,14 @@ public final class StoragePaths {
         return resolveWritableDirectory("data", "avatars");
     }
 
+    public static Path emojiCatalogFile() {
+        return resolveWritable("data", "emoji-catalog.txt");
+    }
+
+    public static Path emojiAssetDirectory() {
+        return resolveWritableDirectory("data", "emoji-assets");
+    }
+
     private static Path resolveWritable(String... parts) {
         Path preferred = Path.of(parts[0], java.util.Arrays.copyOfRange(parts, 1, parts.length));
         if (Files.exists(preferred.getParent())) {

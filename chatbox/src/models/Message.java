@@ -1,5 +1,6 @@
 package models;
 
+import core.EmojiIconCatalog;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -142,6 +143,17 @@ public final class Message {
         return isImageAttachment() || isFileAttachment();
     }
 
+    public boolean isEmojiIcon() {
+        return isImageAttachment() && EmojiIconCatalog.isEmojiIconFile(getAttachmentFileName());
+    }
+
+    public String getEmojiIconLabel() {
+        if (!isEmojiIcon()) {
+            return "";
+        }
+        return EmojiIconCatalog.displayNameFromFileName(getAttachmentFileName());
+    }
+
     public String getAttachmentFileName() {
         if (!attachmentFileName.isBlank()) {
             return attachmentFileName;
@@ -208,6 +220,9 @@ public final class Message {
     public String getSummaryText() {
         if (systemMessage) {
             return text;
+        }
+        if (isEmojiIcon()) {
+            return "Icon: " + getEmojiIconLabel();
         }
         if (kind == Kind.IMAGE) {
             return "Image: " + getAttachmentFileName();

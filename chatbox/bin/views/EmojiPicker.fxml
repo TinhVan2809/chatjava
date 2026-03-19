@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.ChoiceBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+        fx:controller="controllers.EmojiPickerController"
+        spacing="10.0"
+        styleClass="emoji-picker-shell">
+    <children>
+        <Label styleClass="emoji-picker-title" text="Emoji Catalog" />
+        <HBox spacing="8.0">
+            <children>
+                <TextField fx:id="searchField" promptText="Search icons"
+                        styleClass="text-input emoji-picker-search" HBox.hgrow="ALWAYS" />
+                <ChoiceBox fx:id="categoryChoiceBox" styleClass="emoji-picker-category" />
+            </children>
+        </HBox>
+        <ScrollPane fitToWidth="true" hbarPolicy="NEVER" prefHeight="276.0"
+                styleClass="emoji-picker-scroll" vbarPolicy="AS_NEEDED">
+            <content>
+                <FlowPane fx:id="emojiGrid" hgap="8.0" vgap="8.0" styleClass="emoji-picker-grid" />
+            </content>
+        </ScrollPane>
+        <Label fx:id="statusLabel" styleClass="emoji-picker-status" text="0 icon(s)" />
+    </children>
+    <padding>
+        <Insets bottom="12.0" left="12.0" right="12.0" top="12.0" />
+    </padding>
+</VBox>

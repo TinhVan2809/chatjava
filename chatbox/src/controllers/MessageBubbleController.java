@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
@@ -26,6 +27,8 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
+import javafx.scene.text.Text;
+import javafx.scene.text.TextFlow;
 import javafx.util.Duration;
 import models.Message;
 
@@ -51,9 +54,9 @@ public class MessageBubbleController {
     @FXML
     private VBox bubbleStack;
     @FXML
-    private Label replyPreviewLabel;
+    private TextFlow replyPreviewFlow;
     @FXML
-    private Label bubbleLabel;
+    private TextFlow bubbleFlow;
     @FXML
     private VBox imageAttachmentPane;
     @FXML
@@ -104,34 +107,46 @@ public class MessageBubbleController {
     }
 
     public void setMessage(Message message) {
-        setMessage(message, false, null);
+        setMessage(message, false, null, "");
     }
 
     public void setMessage(Message message, boolean privateConversation) {
-        setMessage(message, privateConversation, null);
+        setMessage(message, privateConversation, null, "");
     }
 
     public void setMessage(Message message, boolean privateConversation, Image avatarImage) {
+        setMessage(message, privateConversation, avatarImage, "");
+    }
+
+    public void setMessage(Message message, boolean privateConversation, Image avatarImage, String highlightQuery) {
         this.message = message;
         root.getStyleClass().removeAll("message-row-incoming", "message-row-outgoing", "message-row-system");
-        bubbleLabel.getStyleClass().removeAll("bubble-incoming", "bubble-outgoing", "bubble-system");
+        bubbleFlow.getStyleClass().removeAll("bubble-incoming", "bubble-outgoing", "bubble-system");
 
-        bubbleLabel.setText(message.getText());
-        bubbleLabel.setMaxWidth(420);
-        bubbleLabel.setManaged(false);
-        bubbleLabel.setVisible(false);
-        replyPreviewLabel.setManaged(false);
-        replyPreviewLabel.setVisible(false);
-        replyPreviewLabel.setText("");
+        bubbleFlow.getChildren().clear();
+        bubbleFlow.setMaxWidth(420);
+        bubbleFlow.setManaged(false);
+        bubbleFlow.setVisible(false);
+        replyPreviewFlow.setManaged(false);
+        replyPreviewFlow.setVisible(false);
+        replyPreviewFlow.getChildren().clear();
         imageAttachmentPane.setManaged(false);
         imageAttachmentPane.setVisible(false);
+        imageAttachmentPane.getStyleClass().remove("emoji-sticker-pane");
         imageAttachmentNameLabel.setText("");
         imageAttachmentMetaLabel.setText("");
+        imageAttachmentNameLabel.setManaged(true);
+        imageAttachmentNameLabel.setVisible(true);
+        imageAttachmentMetaLabel.setManaged(true);
+        imageAttachmentMetaLabel.setVisible(true);
         attachmentImageView.setImage(null);
+        attachmentImageView.setFitWidth(340);
         fileAttachmentPane.setManaged(false);
         fileAttachmentPane.setVisible(false);
         fileAttachmentNameLabel.setText("");
         fileAttachmentMetaLabel.setText("");
+        imageSaveButton.setManaged(false);
+        imageSaveButton.setVisible(false);
         statusLabel.setManaged(false);
         statusLabel.setVisible(false);
         statusLabel.setText("");
@@ -148,10 +163,10 @@ public class MessageBubbleController {
             root.setAlignment(Pos.CENTER);
             contentBox.setAlignment(Pos.CENTER);
             root.getStyleClass().add("message-row-system");
-            bubbleLabel.getStyleClass().add("bubble-system");
-            bubbleLabel.setText(message.getText());
-            bubbleLabel.setManaged(true);
-            bubbleLabel.setVisible(true);
+            bubbleFlow.getStyleClass().add("bubble-system");
+            applyHighlightedText(bubbleFlow, message.getText(), highlightQuery, "message-bubble-text", "message-bubble-highlight");
+            bubbleFlow.setManaged(true);
+            bubbleFlow.setVisible(true);
             avatarPane.setManaged(false);
             avatarPane.setVisible(false);
             leadingSpacer.setManaged(false);
@@ -170,7 +185,7 @@ public class MessageBubbleController {
         metaLabel.setText(message.getTimestamp() + "  " + senderDisplayName);
         metaLabel.setManaged(true);
         metaLabel.setVisible(true);
-        configureReplyPreview(message);
+        configureReplyPreview(message, highlightQuery);
         actionsButton.setManaged(true);
         actionsButton.setVisible(true);
         avatarPane.setManaged(!message.isSentByCurrentUser());
@@ -179,7 +194,7 @@ public class MessageBubbleController {
         replyMenuItem.setDisable(false);
         deleteMenuItem.setDisable(false);
         copyMenuItem.setDisable(message.getCopyText().isBlank());
-        configureContent(message);
+        configureContent(message, highlightQuery);
 
         if (message.isSentByCurrentUser()) {
             root.setAlignment(Pos.TOP_RIGHT);
@@ -273,16 +288,20 @@ public class MessageBubbleController {
     }
 
     private void configureReplyPreview(Message message) {
+        configureReplyPreview(message, "");
+    }
+
+    private void configureReplyPreview(Message message, String highlightQuery) {
         if (!message.hasReplyPreview()) {
             return;
         }
 
-        replyPreviewLabel.setText(message.getReplyPreviewText());
-        replyPreviewLabel.setManaged(true);
-        replyPreviewLabel.setVisible(true);
+        applyHighlightedText(replyPreviewFlow, message.getReplyPreviewText(), highlightQuery, "reply-preview-text", "reply-preview-highlight");
+        replyPreviewFlow.setManaged(true);
+        replyPreviewFlow.setVisible(true);
     }
 
-    private void configureContent(Message message) {
+    private void configureContent(Message message, String highlightQuery) {
         if (message.isImageAttachment()) {
             configureImageAttachment(message);
             return;
@@ -293,12 +312,16 @@ public class MessageBubbleController {
             return;
         }
 
-        bubbleLabel.setText(message.getText());
-        bubbleLabel.setManaged(true);
-        bubbleLabel.setVisible(true);
+        applyHighlightedText(bubbleFlow, message.getText(), highlightQuery, "message-bubble-text", "message-bubble-highlight");
+        bubbleFlow.setManaged(true);
+        bubbleFlow.setVisible(true);
     }
 
     private void applyOutgoingStyles(Message message) {
+        if (message.isEmojiIcon()) {
+            ensureImagePaneStyle("emoji-sticker-pane");
+            return;
+        }
         if (message.isImageAttachment()) {
             imageAttachmentPane.getStyleClass().add("attachment-bubble-outgoing");
             return;
@@ -308,10 +331,14 @@ public class MessageBubbleController {
             return;
         }
 
-        bubbleLabel.getStyleClass().add("bubble-outgoing");
+        bubbleFlow.getStyleClass().add("bubble-outgoing");
     }
 
     private void applyIncomingStyles(Message message) {
+        if (message.isEmojiIcon()) {
+            ensureImagePaneStyle("emoji-sticker-pane");
+            return;
+        }
         if (message.isImageAttachment()) {
             imageAttachmentPane.getStyleClass().add("attachment-bubble-incoming");
             return;
@@ -321,34 +348,54 @@ public class MessageBubbleController {
             return;
         }
 
-        bubbleLabel.getStyleClass().add("bubble-incoming");
+        bubbleFlow.getStyleClass().add("bubble-incoming");
     }
 
     private void configureImageAttachment(Message message) {
         byte[] imageBytes = message.getAttachmentBytes();
         if (imageBytes == null || imageBytes.length == 0) {
-            bubbleLabel.setText("[Image unavailable]");
-            bubbleLabel.setManaged(true);
-            bubbleLabel.setVisible(true);
+            applyHighlightedText(bubbleFlow, "[Image unavailable]", "", "message-bubble-text", "message-bubble-highlight");
+            bubbleFlow.setManaged(true);
+            bubbleFlow.setVisible(true);
             return;
         }
 
         Image image = new Image(new ByteArrayInputStream(imageBytes));
         if (image.isError() || image.getWidth() <= 0 || image.getHeight() <= 0) {
-            bubbleLabel.setText("[Image unavailable]");
-            bubbleLabel.setManaged(true);
-            bubbleLabel.setVisible(true);
+            applyHighlightedText(bubbleFlow, "[Image unavailable]", "", "message-bubble-text", "message-bubble-highlight");
+            bubbleFlow.setManaged(true);
+            bubbleFlow.setVisible(true);
             return;
         }
 
         attachmentImageView.setImage(image);
-        attachmentImageView.setFitWidth(Math.min(340, image.getWidth()));
-        imageAttachmentNameLabel.setText(message.getAttachmentFileName());
-        imageAttachmentMetaLabel.setText("Image  " + formatBytes(message.getAttachmentSizeBytes()));
-        imageSaveButton.setManaged(true);
-        imageSaveButton.setVisible(true);
+        if (message.isEmojiIcon()) {
+            attachmentImageView.setFitWidth(Math.min(92, image.getWidth()));
+            imageAttachmentNameLabel.setManaged(false);
+            imageAttachmentNameLabel.setVisible(false);
+            imageAttachmentMetaLabel.setManaged(false);
+            imageAttachmentMetaLabel.setVisible(false);
+            imageSaveButton.setManaged(false);
+            imageSaveButton.setVisible(false);
+            ensureImagePaneStyle("emoji-sticker-pane");
+        } else {
+            attachmentImageView.setFitWidth(Math.min(340, image.getWidth()));
+            imageAttachmentNameLabel.setText(message.getAttachmentFileName());
+            imageAttachmentMetaLabel.setText("Image  " + formatBytes(message.getAttachmentSizeBytes()));
+            imageSaveButton.setManaged(true);
+            imageSaveButton.setVisible(true);
+        }
         imageAttachmentPane.setManaged(true);
         imageAttachmentPane.setVisible(true);
+    }
+
+    private void ensureImagePaneStyle(String styleClass) {
+        if (styleClass == null || styleClass.isBlank()) {
+            return;
+        }
+        if (!imageAttachmentPane.getStyleClass().contains(styleClass)) {
+            imageAttachmentPane.getStyleClass().add(styleClass);
+        }
     }
 
     private void configureFileAttachment(Message message) {
@@ -362,6 +409,48 @@ public class MessageBubbleController {
         fileSaveButton.setVisible(savable);
         fileAttachmentPane.setManaged(true);
         fileAttachmentPane.setVisible(true);
+    }
+
+    private void applyHighlightedText(TextFlow textFlow, String text, String highlightQuery, String baseClass, String highlightClass) {
+        textFlow.getChildren().clear();
+
+        String safeText = text == null ? "" : text;
+        String safeQuery = highlightQuery == null ? "" : highlightQuery.trim();
+        if (safeText.isEmpty()) {
+            return;
+        }
+
+        if (safeQuery.isEmpty()) {
+            Text plainText = new Text(safeText);
+            plainText.getStyleClass().add(baseClass);
+            textFlow.getChildren().add(plainText);
+            return;
+        }
+
+        String lowerText = safeText.toLowerCase(Locale.ROOT);
+        String lowerQuery = safeQuery.toLowerCase(Locale.ROOT);
+        int startIndex = 0;
+
+        while (startIndex < safeText.length()) {
+            int matchIndex = lowerText.indexOf(lowerQuery, startIndex);
+            if (matchIndex < 0) {
+                Text remainingText = new Text(safeText.substring(startIndex));
+                remainingText.getStyleClass().add(baseClass);
+                textFlow.getChildren().add(remainingText);
+                break;
+            }
+
+            if (matchIndex > startIndex) {
+                Text beforeMatch = new Text(safeText.substring(startIndex, matchIndex));
+                beforeMatch.getStyleClass().add(baseClass);
+                textFlow.getChildren().add(beforeMatch);
+            }
+
+            Text highlightedText = new Text(safeText.substring(matchIndex, matchIndex + safeQuery.length()));
+            highlightedText.getStyleClass().addAll(baseClass, highlightClass);
+            textFlow.getChildren().add(highlightedText);
+            startIndex = matchIndex + safeQuery.length();
+        }
     }
 
     @FXML

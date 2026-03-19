@@ -1,0 +1,20 @@
+# type|id|display_name|category|asset_file_name
+# generated icons use built-in renderers
+# file icons read PNG files from data/emoji-assets
+# examples:
+# file|thumbs-up|Thumbs Up|People|thumbs-up.png
+# file|pepe-happy|Pepe Happy|Custom|pepe-happy.png
+generated|smile|Smile|Faces|
+generated|grin|Grin|Faces|
+generated|laugh|Laugh|Faces|
+generated|love|Love Eyes|Faces|
+generated|wink|Wink|Faces|
+generated|cool|Cool|Faces|
+generated|kiss|Kiss|Faces|
+generated|wow|Wow|Faces|
+generated|cry|Cry|Faces|
+generated|angry|Angry|Faces|
+generated|heart|Heart|Symbols|
+generated|star|Star|Symbols|
+generated|fire|Fire|Symbols|
+generated|party|Party|Celebration|

@@ -12,6 +12,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -27,14 +28,22 @@ import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
 
 import core.DesktopApp;
+import core.EmojiIconCatalog;
+import core.EmojiIconCatalog.EmojiIconSpec;
 import core.StoragePaths;
 import core.UiResources;
+import javafx.animation.Animation;
+import javafx.animation.Interpolator;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
 import javafx.animation.PauseTransition;
+import javafx.animation.Timeline;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -57,6 +66,7 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.SVGPath;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
+import javafx.stage.Popup;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.util.Duration;
@@ -82,6 +92,8 @@ public class MessengerController implements ChatClientListener {
             "M17 10.5V7C17 6.45 16.55 6 16 6H4C3.45 6 3 6.45 3 7V17C3 17.55 3.45 18 4 18H16C16.55 18 17 17.55 17 17V13.5L21 17V7L17 10.5Z";
     private static final String SEARCH_ICON_PATH =
             "M15.5 14H14.71L14.43 13.73C15.41 12.59 16 11.11 16 9.5C16 5.91 13.09 3 9.5 3C5.91 3 3 5.91 3 9.5C3 13.09 5.91 16 9.5 16C11.11 16 12.59 15.41 13.73 14.43L14 14.71V15.5L19 20.49L20.49 19L15.5 14ZM9.5 14C7.01 14 5 11.99 5 9.5C5 7.01 7.01 5 9.5 5C11.99 5 14 7.01 14 9.5C14 11.99 11.99 14 9.5 14Z";
+    private static final String EMOJI_ICON_PATH =
+            "M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2S22 6.48 22 12S17.52 22 12 22ZM8.5 11.5C9.33 11.5 10 10.83 10 10S9.33 8.5 8.5 8.5S7 9.17 7 10S7.67 11.5 8.5 11.5ZM15.5 11.5C16.33 11.5 17 10.83 17 10S16.33 8.5 15.5 8.5S14 9.17 14 10S14.67 11.5 15.5 11.5ZM12 18C14.33 18 16.31 16.54 17.11 14.5H6.89C7.69 16.54 9.67 18 12 18Z";
 
     @FXML
     private BorderPane rootPane;
@@ -132,7 +144,17 @@ public class MessengerController implements ChatClientListener {
     @FXML
     private Label emptyStateBodyLabel;
     @FXML
-    private Label typingIndicatorLabel;
+    private Button newMessagesButton;
+    @FXML
+    private HBox typingIndicatorPane;
+    @FXML
+    private Label typingIndicatorTextLabel;
+    @FXML
+    private Circle typingDotOne;
+    @FXML
+    private Circle typingDotTwo;
+    @FXML
+    private Circle typingDotThree;
     @FXML
     private VBox messageSearchSidebar;
     @FXML
@@ -153,6 +175,8 @@ public class MessengerController implements ChatClientListener {
     private TextField messageInputField;
     @FXML
     private Button sendImageButton;
+    @FXML
+    private Button sendEmojiButton;
     @FXML
     private Button sendFileButton;
     @FXML
@@ -192,6 +216,14 @@ public class MessengerController implements ChatClientListener {
     private String currentCallPeerUsername = "";
     private String currentCallPeerDisplayName = "";
     private Alert incomingCallAlert;
+    private int pendingNewMessagesCount;
+    private Message activeUnreadDividerMessage;
+    private Node unreadDividerNode;
+    private boolean suppressAutoReadStateClearing;
+    private Popup emojiPickerPopup;
+    private VBox emojiPickerRoot;
+    private EmojiPickerController emojiPickerController;
+    private Timeline typingDotsTimeline;
 
     @FXML
     private void initialize() {
@@ -210,7 +242,7 @@ public class MessengerController implements ChatClientListener {
                 });
 
         searchField.textProperty().addListener((observable, oldValue, newValue) -> filterConversations(newValue));
-        messageSearchField.textProperty().addListener((observable, oldValue, newValue) -> refreshMessageSearchResults());
+        messageSearchField.textProperty().addListener((observable, oldValue, newValue) -> handleMessageSearchQueryChanged());
         messageSearchResultsListView.getSelectionModel().selectedItemProperty()
                 .addListener((observable, previous, current) -> scrollToSearchResult(current));
         messageInputField.textProperty().addListener((observable, oldValue, newValue) -> handleTypingInputChange());
@@ -218,8 +250,16 @@ public class MessengerController implements ChatClientListener {
         localTypingIdleTimer.setOnFinished(event -> stopTyping(true));
 
         messagesScrollPane.setFitToWidth(true);
-        typingIndicatorLabel.setManaged(false);
-        typingIndicatorLabel.setVisible(false);
+        messagesScrollPane.vvalueProperty().addListener((observable, oldValue, newValue) -> handleMessagesScrollPositionChanged());
+        messagesScrollPane.viewportBoundsProperty()
+                .addListener((observable, oldBounds, newBounds) -> handleMessagesScrollPositionChanged());
+        messagesContainer.heightProperty()
+                .addListener((observable, oldHeight, newHeight) -> handleMessagesScrollPositionChanged());
+        typingIndicatorPane.setManaged(false);
+        typingIndicatorPane.setVisible(false);
+        configureTypingIndicatorAnimation();
+        newMessagesButton.setManaged(false);
+        newMessagesButton.setVisible(false);
         replyPreviewPane.setManaged(false);
         replyPreviewPane.setVisible(false);
         callStatusLabel.setManaged(false);
@@ -234,8 +274,9 @@ public class MessengerController implements ChatClientListener {
                 .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(currentUserAvatarPane, newImage));
         headerAvatarImageView.imageProperty()
                 .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(headerAvatarPane, newImage));
-        configureAttachmentButton(sendImageButton, "lib/send_image.png", "\uD83D\uDCF7", "Send image");
-        configureAttachmentButton(sendFileButton, "lib/send_file.png", "\uD83D\uDCCE", "Send file");
+        configureAttachmentButton(sendImageButton, "lib/send_image2.png", "\uD83D\uDCF7", "Send image");
+        configureSvgToolButton(sendEmojiButton, "Send icon", EMOJI_ICON_PATH);
+        configureAttachmentButton(sendFileButton, "lib/send_file1.png", "\uD83D\uDCCE", "Send file");
         configureHeaderIconButton(searchMessagesButton, "Search messages", SEARCH_ICON_PATH, 0);
         configureHeaderIconButton(callButton, "Voice call", PHONE_ICON_PATH, 0);
         configureHeaderIconButton(videoCallButton, "Video call", VIDEO_ICON_PATH, 0);
@@ -286,6 +327,15 @@ public class MessengerController implements ChatClientListener {
     }
 
     @FXML
+    private void onSendEmoji() {
+        if (activeConversation == null || service == null || rootPane.getScene() == null) {
+            return;
+        }
+
+        toggleEmojiPicker();
+    }
+
+    @FXML
     private void onSendFile() {
         if (activeConversation == null || service == null) {
             return;
@@ -324,11 +374,13 @@ public class MessengerController implements ChatClientListener {
         if (rootPane.getStyleClass().contains("theme-dark")) {
             rootPane.getStyleClass().remove("theme-dark");
             themeToggleButton.setText("Dark");
+            syncEmojiPickerTheme();
             return;
         }
 
         rootPane.getStyleClass().add("theme-dark");
         themeToggleButton.setText("Light");
+        syncEmojiPickerTheme();
     }
 
     @FXML
@@ -369,10 +421,13 @@ public class MessengerController implements ChatClientListener {
         boolean visible = !messageSearchSidebar.isVisible();
         setMessageSearchSidebarVisible(visible);
         if (visible) {
-            refreshMessageSearchResults();
+            handleMessageSearchQueryChanged();
             messageSearchField.requestFocus();
             messageSearchField.selectAll();
+            return;
         }
+
+        rerenderActiveConversationForSearchHighlight();
     }
 
     @FXML
@@ -382,6 +437,180 @@ public class MessengerController implements ChatClientListener {
         }
 
         endCurrentCall(true, "Call ended.");
+    }
+
+    @FXML
+    private void onJumpToLatestMessages() {
+        scrollToBottomSoon();
+    }
+
+    private void configureTypingIndicatorAnimation() {
+        typingDotsTimeline = new Timeline(
+                dotFrame(Duration.ZERO,
+                        dotState(typingDotOne, 0.38, 2.0, 0.94),
+                        dotState(typingDotTwo, 0.30, 4.0, 0.90),
+                        dotState(typingDotThree, 0.24, 5.5, 0.88)),
+                dotFrame(Duration.millis(180),
+                        dotState(typingDotOne, 1.0, -2.0, 1.0),
+                        dotState(typingDotTwo, 0.34, 3.0, 0.92),
+                        dotState(typingDotThree, 0.26, 5.0, 0.88)),
+                dotFrame(Duration.millis(320),
+                        dotState(typingDotOne, 0.42, 1.5, 0.95),
+                        dotState(typingDotTwo, 1.0, -2.0, 1.0),
+                        dotState(typingDotThree, 0.30, 3.0, 0.92)),
+                dotFrame(Duration.millis(460),
+                        dotState(typingDotOne, 0.30, 4.0, 0.90),
+                        dotState(typingDotTwo, 0.44, 1.5, 0.95),
+                        dotState(typingDotThree, 1.0, -2.0, 1.0)),
+                dotFrame(Duration.millis(720),
+                        dotState(typingDotOne, 0.38, 2.0, 0.94),
+                        dotState(typingDotTwo, 0.30, 4.0, 0.90),
+                        dotState(typingDotThree, 0.24, 5.5, 0.88)));
+        typingDotsTimeline.setCycleCount(Animation.INDEFINITE);
+        resetTypingDots();
+    }
+
+    private KeyFrame dotFrame(Duration at, KeyValue[]... groups) {
+        List<KeyValue> values = new ArrayList<>();
+        for (KeyValue[] group : groups) {
+            values.addAll(Arrays.asList(group));
+        }
+        return new KeyFrame(at, values.toArray(KeyValue[]::new));
+    }
+
+    private KeyValue[] dotState(Circle dot, double opacity, double translateY, double scale) {
+        return new KeyValue[] {
+                new KeyValue(dot.opacityProperty(), opacity, Interpolator.EASE_BOTH),
+                new KeyValue(dot.translateYProperty(), translateY, Interpolator.EASE_BOTH),
+                new KeyValue(dot.scaleXProperty(), scale, Interpolator.EASE_BOTH),
+                new KeyValue(dot.scaleYProperty(), scale, Interpolator.EASE_BOTH)
+        };
+    }
+
+    private void setTypingIndicatorVisible(boolean visible) {
+        typingIndicatorPane.setVisible(visible);
+        typingIndicatorPane.setManaged(visible);
+        if (!visible) {
+            if (typingDotsTimeline != null) {
+                typingDotsTimeline.stop();
+            }
+            resetTypingDots();
+            return;
+        }
+
+        if (typingDotsTimeline != null && typingDotsTimeline.getStatus() != Animation.Status.RUNNING) {
+            typingDotsTimeline.play();
+        }
+    }
+
+    private void resetTypingDots() {
+        resetTypingDot(typingDotOne, 0.38, 2.0, 0.94);
+        resetTypingDot(typingDotTwo, 0.30, 4.0, 0.90);
+        resetTypingDot(typingDotThree, 0.24, 5.5, 0.88);
+    }
+
+    private void resetTypingDot(Circle dot, double opacity, double translateY, double scale) {
+        if (dot == null) {
+            return;
+        }
+
+        dot.setOpacity(opacity);
+        dot.setTranslateY(translateY);
+        dot.setScaleX(scale);
+        dot.setScaleY(scale);
+    }
+
+    private void toggleEmojiPicker() {
+        EmojiIconCatalog.reloadCatalog();
+        ensureEmojiPickerPopup();
+        if (emojiPickerPopup == null) {
+            return;
+        }
+        if (emojiPickerController != null) {
+            emojiPickerController.refreshCatalog();
+        }
+
+        if (emojiPickerPopup.isShowing()) {
+            hideEmojiPicker();
+            return;
+        }
+
+        syncEmojiPickerTheme();
+        Bounds buttonBounds = sendEmojiButton.localToScreen(sendEmojiButton.getBoundsInLocal());
+        if (buttonBounds == null) {
+            return;
+        }
+
+        emojiPickerRoot.applyCss();
+        emojiPickerRoot.layout();
+        double popupWidth = emojiPickerRoot.prefWidth(-1);
+        double popupHeight = emojiPickerRoot.prefHeight(-1);
+        double x = Math.max(12, buttonBounds.getMaxX() - popupWidth);
+        double y = buttonBounds.getMinY() - popupHeight - 10;
+        if (y < 12) {
+            y = buttonBounds.getMaxY() + 10;
+        }
+
+        emojiPickerPopup.show(sendEmojiButton, x, y);
+        sendEmojiButton.getStyleClass().add("composer-tool-button-active");
+    }
+
+    private void ensureEmojiPickerPopup() {
+        if (emojiPickerPopup != null) {
+            return;
+        }
+
+        try {
+            FXMLLoader loader = new FXMLLoader(UiResources.fxml("views/EmojiPicker.fxml"));
+            VBox popupRoot = loader.load();
+            EmojiPickerController controller = loader.getController();
+            controller.setOnEmojiSelected(this::handleEmojiSelected);
+            controller.refreshCatalog();
+            String stylesheet = UiResources.stylesheet("css/MessengerStyle.css");
+            if (!stylesheet.isBlank()) {
+                popupRoot.getStylesheets().add(stylesheet);
+            }
+
+            emojiPickerRoot = popupRoot;
+            emojiPickerController = controller;
+            emojiPickerPopup = new Popup();
+            emojiPickerPopup.setAutoHide(true);
+            emojiPickerPopup.setHideOnEscape(true);
+            emojiPickerPopup.getContent().add(popupRoot);
+            emojiPickerPopup.setOnHidden(event -> sendEmojiButton.getStyleClass().remove("composer-tool-button-active"));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to load emoji picker.", ex);
+        }
+    }
+
+    private void syncEmojiPickerTheme() {
+        if (emojiPickerRoot == null) {
+            return;
+        }
+
+        emojiPickerRoot.getStyleClass().remove("theme-dark");
+        if (rootPane.getStyleClass().contains("theme-dark")) {
+            emojiPickerRoot.getStyleClass().add("theme-dark");
+        }
+    }
+
+    private void hideEmojiPicker() {
+        if (emojiPickerPopup != null) {
+            emojiPickerPopup.hide();
+        }
+    }
+
+    private void handleEmojiSelected(EmojiIconSpec icon) {
+        hideEmojiPicker();
+        if (icon == null || activeConversation == null || service == null) {
+            return;
+        }
+
+        Conversation targetConversation = activeConversation;
+        Thread sender = new Thread(() -> sendEmojiAttachment(targetConversation, icon),
+                "fx-send-icon-" + icon.id() + "-" + System.currentTimeMillis());
+        sender.setDaemon(true);
+        sender.start();
     }
 
     public void shutdown() {
@@ -395,6 +624,8 @@ public class MessengerController implements ChatClientListener {
             endCurrentCall(true, "Call ended.");
         }
         audioCallManager.shutdown();
+        hideEmojiPicker();
+        setTypingIndicatorVisible(false);
         if (profilePopupStage != null) {
             profilePopupStage.close();
         }
@@ -850,13 +1081,20 @@ public class MessengerController implements ChatClientListener {
         }
 
         stopTyping(true);
+        hideEmojiPicker();
         if (activeConversation != null && !activeConversation.equals(conversation)) {
             clearReply();
         }
+        prepareUnreadDividerForConversation(conversation);
         activeConversation = conversation;
         activeConversation.clearUnread();
         flushPendingSeenReceipts(activeConversation);
-        renderConversation(activeConversation);
+        clearPendingNewMessagesIndicator();
+        boolean shouldScrollToBottom = activeUnreadDividerMessage == null;
+        renderConversation(activeConversation, shouldScrollToBottom);
+        if (!shouldScrollToBottom) {
+            scrollToUnreadDividerSoon();
+        }
         updateHeader(activeConversation);
         updateTypingIndicator();
         refreshMessageSearchResults();
@@ -865,8 +1103,14 @@ public class MessengerController implements ChatClientListener {
     }
 
     private void renderConversation(Conversation conversation) {
+        renderConversation(conversation, true);
+    }
+
+    private void renderConversation(Conversation conversation, boolean scrollToBottom) {
+        suppressAutoReadStateClearing = true;
         messagesContainer.getChildren().clear();
         renderedMessageNodes.clear();
+        unreadDividerNode = null;
 
         if (conversation.getMessages().isEmpty()) {
             emptyStatePane.setVisible(true);
@@ -877,18 +1121,27 @@ public class MessengerController implements ChatClientListener {
             emptyStateBodyLabel.setText(conversation.isGroupConversation()
                     ? "The room is ready. Your first message will show up here."
                     : "Send a message to " + conversation.getTitle() + " to begin.");
+            refreshMessageSearchResults();
+            javafx.application.Platform.runLater(() -> suppressAutoReadStateClearing = false);
             return;
         }
 
         emptyStatePane.setVisible(false);
         emptyStatePane.setManaged(false);
         for (Message message : conversation.getMessages()) {
+            if (shouldRenderUnreadDivider(conversation, message)) {
+                unreadDividerNode = createUnreadDividerNode();
+                messagesContainer.getChildren().add(unreadDividerNode);
+            }
             Node node = createMessageNode(conversation, message, false);
             renderedMessageNodes.put(message, node);
             messagesContainer.getChildren().add(node);
         }
-        scrollToBottomSoon();
+        if (scrollToBottom) {
+            scrollToBottomSoon();
+        }
         refreshMessageSearchResults();
+        javafx.application.Platform.runLater(() -> suppressAutoReadStateClearing = false);
     }
 
     private void appendMessage(Conversation conversation, Message message, boolean animate) {
@@ -908,13 +1161,28 @@ public class MessengerController implements ChatClientListener {
         }
 
         boolean pinnedToBottom = isPinnedToBottom();
+        double preservedScrollOffset = pinnedToBottom ? -1 : currentScrollOffset();
+        boolean shouldMarkUnreadBoundary = !pinnedToBottom
+                && !message.isSentByCurrentUser()
+                && !message.isSystemMessage()
+                && activeUnreadDividerMessage == null;
         emptyStatePane.setVisible(false);
         emptyStatePane.setManaged(false);
+        if (shouldMarkUnreadBoundary) {
+            activeUnreadDividerMessage = message;
+            unreadDividerNode = createUnreadDividerNode();
+            messagesContainer.getChildren().add(unreadDividerNode);
+        }
         Node node = createMessageNode(conversation, message, animate);
         renderedMessageNodes.put(message, node);
         messagesContainer.getChildren().add(node);
         if (pinnedToBottom || message.isSentByCurrentUser()) {
             scrollToBottomSoon();
+        } else {
+            restoreScrollOffsetSoon(preservedScrollOffset);
+            if (!message.isSystemMessage()) {
+                incrementPendingNewMessagesIndicator();
+            }
         }
         updateHeader(conversation);
         refreshMessageSearchResults();
@@ -929,7 +1197,8 @@ public class MessengerController implements ChatClientListener {
             controller.setMessage(
                     message,
                     conversation != null && !conversation.isGroupConversation(),
-                    resolveMessageAvatar(message));
+                    resolveMessageAvatar(message),
+                    currentMessageHighlightQuery());
             controller.setActions(
                     () -> beginReply(conversation, message),
                     () -> deleteMessageLocally(conversation, message));
@@ -1097,6 +1366,43 @@ public class MessengerController implements ChatClientListener {
         messageSearchResultsListView.getSelectionModel().clearSelection();
     }
 
+    private void handleMessageSearchQueryChanged() {
+        if (activeConversation == null) {
+            refreshMessageSearchResults();
+            return;
+        }
+
+        rerenderActiveConversationForSearchHighlight();
+    }
+
+    private String currentMessageHighlightQuery() {
+        if (!messageSearchSidebar.isVisible()) {
+            return "";
+        }
+
+        String query = messageSearchField.getText();
+        if (query == null) {
+            return "";
+        }
+
+        String normalizedQuery = query.trim();
+        return normalizedQuery.isBlank() ? "" : normalizedQuery;
+    }
+
+    private void rerenderActiveConversationForSearchHighlight() {
+        if (activeConversation == null) {
+            refreshMessageSearchResults();
+            return;
+        }
+
+        double currentVvalue = messagesScrollPane.getVvalue();
+        renderConversation(activeConversation, false);
+        javafx.application.Platform.runLater(() -> {
+            messagesScrollPane.layout();
+            messagesScrollPane.setVvalue(currentVvalue);
+        });
+    }
+
     private void refreshMessageSearchResults() {
         messageSearchResults.clear();
 
@@ -1174,6 +1480,22 @@ public class MessengerController implements ChatClientListener {
             return;
         }
 
+        scrollNodeIntoViewSoon(messageNode, 18);
+    }
+
+    private void scrollToUnreadDividerSoon() {
+        if (unreadDividerNode == null) {
+            return;
+        }
+
+        scrollNodeIntoViewSoon(unreadDividerNode, 16);
+    }
+
+    private void scrollNodeIntoViewSoon(Node targetNode, double topPadding) {
+        if (targetNode == null) {
+            return;
+        }
+
         javafx.application.Platform.runLater(() -> {
             double contentHeight = messagesContainer.getBoundsInLocal().getHeight();
             double viewportHeight = messagesScrollPane.getViewportBounds().getHeight();
@@ -1183,9 +1505,119 @@ public class MessengerController implements ChatClientListener {
                 return;
             }
 
-            double targetY = Math.max(0, messageNode.getBoundsInParent().getMinY() - 18);
+            double targetY = Math.max(0, targetNode.getBoundsInParent().getMinY() - topPadding);
             messagesScrollPane.setVvalue(Math.min(1.0, targetY / maxScroll));
         });
+    }
+
+    private void handleMessagesScrollPositionChanged() {
+        if (suppressAutoReadStateClearing) {
+            return;
+        }
+        if (isPinnedToBottom()) {
+            clearPendingNewMessagesIndicator();
+        }
+        if (isAtScrollableBottom()) {
+            clearUnreadDividerMarker();
+        }
+    }
+
+    private double currentScrollOffset() {
+        double contentHeight = messagesContainer.getBoundsInLocal().getHeight();
+        double viewportHeight = messagesScrollPane.getViewportBounds().getHeight();
+        double maxScroll = Math.max(0, contentHeight - viewportHeight);
+        if (maxScroll <= 0) {
+            return 0;
+        }
+        return maxScroll * messagesScrollPane.getVvalue();
+    }
+
+    private void restoreScrollOffsetSoon(double scrollOffset) {
+        if (scrollOffset < 0) {
+            return;
+        }
+
+        javafx.application.Platform.runLater(() -> {
+            messagesScrollPane.layout();
+            double contentHeight = messagesContainer.getBoundsInLocal().getHeight();
+            double viewportHeight = messagesScrollPane.getViewportBounds().getHeight();
+            double maxScroll = Math.max(0, contentHeight - viewportHeight);
+            if (maxScroll <= 0) {
+                messagesScrollPane.setVvalue(0);
+                return;
+            }
+
+            messagesScrollPane.setVvalue(Math.min(1.0, scrollOffset / maxScroll));
+        });
+    }
+
+    private void incrementPendingNewMessagesIndicator() {
+        pendingNewMessagesCount++;
+        String labelText = pendingNewMessagesCount <= 1
+                ? "Tin nhắn mới ↓"
+                : pendingNewMessagesCount + " tin nhắn mới ↓";
+        newMessagesButton.setText(labelText);
+        newMessagesButton.setManaged(true);
+        newMessagesButton.setVisible(true);
+    }
+
+    private void clearPendingNewMessagesIndicator() {
+        pendingNewMessagesCount = 0;
+        newMessagesButton.setManaged(false);
+        newMessagesButton.setVisible(false);
+        newMessagesButton.setText("Tin nhắn mới ↓");
+    }
+
+    private void prepareUnreadDividerForConversation(Conversation conversation) {
+        clearUnreadDividerMarker();
+        activeUnreadDividerMessage = resolveUnreadDividerMessage(conversation);
+    }
+
+    private Message resolveUnreadDividerMessage(Conversation conversation) {
+        if (conversation == null) {
+            return null;
+        }
+
+        int unreadCount = conversation.getUnreadCount();
+        if (unreadCount <= 0) {
+            return null;
+        }
+
+        List<Message> messages = conversation.getMessages();
+        if (messages.isEmpty()) {
+            return null;
+        }
+
+        int dividerIndex = Math.max(0, messages.size() - unreadCount);
+        if (dividerIndex >= messages.size()) {
+            return null;
+        }
+
+        return messages.get(dividerIndex);
+    }
+
+    private boolean shouldRenderUnreadDivider(Conversation conversation, Message message) {
+        return conversation != null
+                && conversation.equals(activeConversation)
+                && unreadDividerNode == null
+                && activeUnreadDividerMessage != null
+                && activeUnreadDividerMessage.equals(message);
+    }
+
+    private Node createUnreadDividerNode() {
+        try {
+            return new FXMLLoader(UiResources.fxml("views/UnreadDivider.fxml")).load();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to load unread divider.", ex);
+        }
+    }
+
+    private void clearUnreadDividerMarker() {
+        activeUnreadDividerMessage = null;
+        if (unreadDividerNode != null) {
+            messagesContainer.getChildren().remove(unreadDividerNode);
+            unreadDividerNode = null;
+        }
     }
 
     private String extractSearchableText(Message message) {
@@ -1252,8 +1684,8 @@ public class MessengerController implements ChatClientListener {
         String text = "";
 
         if (activeConversation == null) {
-            typingIndicatorLabel.setVisible(false);
-            typingIndicatorLabel.setManaged(false);
+            typingIndicatorTextLabel.setText("");
+            setTypingIndicatorVisible(false);
             return;
         }
 
@@ -1265,10 +1697,9 @@ public class MessengerController implements ChatClientListener {
             text = activeConversation.getSubtitle();
         }
 
-        typingIndicatorLabel.setText(text);
         boolean visible = !text.isBlank();
-        typingIndicatorLabel.setVisible(visible);
-        typingIndicatorLabel.setManaged(visible);
+        typingIndicatorTextLabel.setText(text);
+        setTypingIndicatorVisible(visible);
     }
 
     private Conversation getOrCreatePrivateConversation(String username, String displayName) {
@@ -1338,6 +1769,9 @@ public class MessengerController implements ChatClientListener {
         if (message.equals(replyMessage)) {
             clearReply();
         }
+        if (message.equals(activeUnreadDividerMessage)) {
+            clearUnreadDividerMarker();
+        }
 
         if (conversation.equals(activeConversation)) {
             renderConversation(conversation);
@@ -1364,6 +1798,31 @@ public class MessengerController implements ChatClientListener {
         }
 
         String mimeType = detectMimeType(imagePath, fileName, "image/");
+        if (conversation.isGroupConversation()) {
+            service.sendGroupImage(fileName, mimeType, imageBytes);
+            return;
+        }
+
+        service.sendPrivateImage(conversation.getPeerUsername(), fileName, mimeType, imageBytes);
+    }
+
+    private void sendEmojiAttachment(Conversation conversation, EmojiIconSpec icon) {
+        if (conversation == null || icon == null || service == null) {
+            return;
+        }
+
+        byte[] imageBytes = EmojiIconCatalog.pngBytes(icon.id(), 160);
+        if (imageBytes == null || imageBytes.length == 0) {
+            appendLocalSystemMessage(conversation, "Unable to generate icon.");
+            return;
+        }
+        if (imageBytes.length > MAX_IMAGE_BYTES) {
+            appendLocalSystemMessage(conversation, "Icon exceeds the image size limit.");
+            return;
+        }
+
+        String fileName = EmojiIconCatalog.fileName(icon.id());
+        String mimeType = "image/png";
         if (conversation.isGroupConversation()) {
             service.sendGroupImage(fileName, mimeType, imageBytes);
             return;
@@ -1727,10 +2186,21 @@ public class MessengerController implements ChatClientListener {
         return messagesScrollPane.getVvalue() >= 0.96;
     }
 
+    private boolean isAtScrollableBottom() {
+        double contentHeight = messagesContainer.getBoundsInLocal().getHeight();
+        double viewportHeight = messagesScrollPane.getViewportBounds().getHeight();
+        if (contentHeight <= viewportHeight + 4) {
+            return false;
+        }
+        return messagesScrollPane.getVvalue() >= 0.96;
+    }
+
     private void scrollToBottomSoon() {
         javafx.application.Platform.runLater(() -> {
             messagesScrollPane.layout();
             messagesScrollPane.setVvalue(1.0);
+            clearPendingNewMessagesIndicator();
+            clearUnreadDividerMarker();
         });
     }
 
@@ -1867,6 +2337,22 @@ public class MessengerController implements ChatClientListener {
         imageView.setFitHeight(18);
         imageView.setPreserveRatio(true);
         button.setGraphic(imageView);
+    }
+
+    private void configureSvgToolButton(Button button, String tooltipText, String svgPathContent) {
+        if (button == null) {
+            return;
+        }
+
+        button.setText("");
+        button.setTooltip(new Tooltip(tooltipText));
+
+        SVGPath icon = new SVGPath();
+        icon.setContent(svgPathContent);
+        icon.getStyleClass().add("composer-tool-icon");
+        icon.setScaleX(0.74);
+        icon.setScaleY(0.74);
+        button.setGraphic(icon);
     }
 
     private void configureHeaderIconButton(Button button, String tooltipText, String svgPathContent, double rotateDegrees) {

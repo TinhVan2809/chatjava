@@ -148,6 +148,17 @@
                                 </VBox>
                             </children>
                         </StackPane>
+
+                        <Button fx:id="newMessagesButton" managed="false" mnemonicParsing="false"
+                                onAction="#onJumpToLatestMessages" styleClass="new-messages-button"
+                                text="Tin nhắn mới ↓" visible="false">
+                            <StackPane.alignment>
+                                <javafx.geometry.Pos fx:constant="BOTTOM_CENTER" />
+                            </StackPane.alignment>
+                            <StackPane.margin>
+                                <Insets bottom="18.0" />
+                            </StackPane.margin>
+                        </Button>
                     </children>
                 </StackPane>
             </center>
@@ -179,7 +190,24 @@
             <bottom>
                 <VBox spacing="10.0" styleClass="composer-shell">
                     <children>
-                        <Label fx:id="typingIndicatorLabel" styleClass="typing-indicator" text="typing..." />
+                        <HBox fx:id="typingIndicatorPane" alignment="CENTER_LEFT" managed="false" spacing="10.0"
+                                styleClass="typing-indicator-pane" visible="false">
+                            <children>
+                                <Label fx:id="typingIndicatorTextLabel" styleClass="typing-indicator-text"
+                                        text="typing..." />
+                                <StackPane styleClass="typing-indicator-bubble">
+                                    <children>
+                                        <HBox alignment="CENTER" spacing="6.0">
+                                            <children>
+                                                <Circle fx:id="typingDotOne" radius="4.0" styleClass="typing-indicator-dot" />
+                                                <Circle fx:id="typingDotTwo" radius="4.0" styleClass="typing-indicator-dot" />
+                                                <Circle fx:id="typingDotThree" radius="4.0" styleClass="typing-indicator-dot" />
+                                            </children>
+                                        </HBox>
+                                    </children>
+                                </StackPane>
+                            </children>
+                        </HBox>
                         <HBox fx:id="replyPreviewPane" alignment="CENTER_LEFT" spacing="10.0" styleClass="reply-composer">
                             <children>
                                 <VBox spacing="3.0" HBox.hgrow="ALWAYS">
@@ -198,6 +226,8 @@
                                 <TextField fx:id="messageInputField" promptText="Write a message and press Enter"
                                         styleClass="text-input composer-input" HBox.hgrow="ALWAYS" />
                                 <Button fx:id="sendImageButton" mnemonicParsing="false" onAction="#onSendImage"
+                                        styleClass="ghost-button compact-button composer-tool-button" text="" />
+                                <Button fx:id="sendEmojiButton" mnemonicParsing="false" onAction="#onSendEmoji"
                                         styleClass="ghost-button compact-button composer-tool-button" text="" />
                                 <Button fx:id="sendFileButton" mnemonicParsing="false" onAction="#onSendFile"
                                         styleClass="ghost-button compact-button composer-tool-button" text="" />

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+
+<HBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+        alignment="CENTER"
+        spacing="12.0"
+        styleClass="unread-divider">
+    <children>
+        <Separator styleClass="unread-divider-line" HBox.hgrow="ALWAYS" />
+        <Label styleClass="unread-divider-label" text="Tin nhắn chưa đọc" />
+        <Separator styleClass="unread-divider-line" HBox.hgrow="ALWAYS" />
+    </children>
+</HBox>
