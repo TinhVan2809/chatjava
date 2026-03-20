@@ -226,11 +226,11 @@
                                 <TextField fx:id="messageInputField" promptText="Write a message and press Enter"
                                         styleClass="text-input composer-input" HBox.hgrow="ALWAYS" />
                                 <Button fx:id="sendImageButton" mnemonicParsing="false" onAction="#onSendImage"
-                                        styleClass="ghost-button compact-button composer-tool-button" text="" />
+                                        styleClass="composer-tool-button" text="" />
                                 <Button fx:id="sendEmojiButton" mnemonicParsing="false" onAction="#onSendEmoji"
-                                        styleClass="ghost-button compact-button composer-tool-button" text="" />
+                                        styleClass="composer-tool-button" text="" />
                                 <Button fx:id="sendFileButton" mnemonicParsing="false" onAction="#onSendFile"
-                                        styleClass="ghost-button compact-button composer-tool-button" text="" />
+                                        styleClass="composer-tool-button" text="" />
                                 <Button fx:id="sendButton" mnemonicParsing="false" onAction="#onSendMessage"
                                         styleClass="primary-button" text="Gửi" />
                             </children>

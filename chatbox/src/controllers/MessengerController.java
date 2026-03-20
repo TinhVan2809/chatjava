@@ -94,6 +94,10 @@ public class MessengerController implements ChatClientListener {
             "M15.5 14H14.71L14.43 13.73C15.41 12.59 16 11.11 16 9.5C16 5.91 13.09 3 9.5 3C5.91 3 3 5.91 3 9.5C3 13.09 5.91 16 9.5 16C11.11 16 12.59 15.41 13.73 14.43L14 14.71V15.5L19 20.49L20.49 19L15.5 14ZM9.5 14C7.01 14 5 11.99 5 9.5C5 7.01 7.01 5 9.5 5C11.99 5 14 7.01 14 9.5C14 11.99 11.99 14 9.5 14Z";
     private static final String EMOJI_ICON_PATH =
             "M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2S22 6.48 22 12S17.52 22 12 22ZM8.5 11.5C9.33 11.5 10 10.83 10 10S9.33 8.5 8.5 8.5S7 9.17 7 10S7.67 11.5 8.5 11.5ZM15.5 11.5C16.33 11.5 17 10.83 17 10S16.33 8.5 15.5 8.5S14 9.17 14 10S14.67 11.5 15.5 11.5ZM12 18C14.33 18 16.31 16.54 17.11 14.5H6.89C7.69 16.54 9.67 18 12 18Z";
+    private static final String IMAGE_ICON_PATH =
+            "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z";
+    private static final String FILE_ICON_PATH =
+            "M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5a2.5 2.5 0 0 0 5 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z";
 
     @FXML
     private BorderPane rootPane;
@@ -274,9 +278,9 @@ public class MessengerController implements ChatClientListener {
                 .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(currentUserAvatarPane, newImage));
         headerAvatarImageView.imageProperty()
                 .addListener((observable, oldImage, newImage) -> updateAvatarPaneStyle(headerAvatarPane, newImage));
-        configureAttachmentButton(sendImageButton, "lib/send_image2.png", "\uD83D\uDCF7", "Send image");
+        configureSvgToolButton(sendImageButton, "Send image", IMAGE_ICON_PATH);
         configureSvgToolButton(sendEmojiButton, "Send icon", EMOJI_ICON_PATH);
-        configureAttachmentButton(sendFileButton, "lib/send_file1.png", "\uD83D\uDCCE", "Send file");
+        configureSvgToolButton(sendFileButton, "Send file", FILE_ICON_PATH);
         configureHeaderIconButton(searchMessagesButton, "Search messages", SEARCH_ICON_PATH, 0);
         configureHeaderIconButton(callButton, "Voice call", PHONE_ICON_PATH, 0);
         configureHeaderIconButton(videoCallButton, "Video call", VIDEO_ICON_PATH, 0);
@@ -2317,26 +2321,6 @@ public class MessengerController implements ChatClientListener {
 
         java.io.File selectedFile = chooser.showOpenDialog(rootPane.getScene().getWindow());
         return selectedFile == null ? null : selectedFile.toPath();
-    }
-
-    private void configureAttachmentButton(Button button, String iconPath, String fallbackText, String tooltipText) {
-        if (button == null) {
-            return;
-        }
-
-        button.setText("");
-        button.setTooltip(new javafx.scene.control.Tooltip(tooltipText));
-        Image iconImage = UiResources.image(iconPath);
-        if (iconImage == null || iconImage.isError()) {
-            button.setText(fallbackText);
-            return;
-        }
-
-        ImageView imageView = new ImageView(iconImage);
-        imageView.setFitWidth(18);
-        imageView.setFitHeight(18);
-        imageView.setPreserveRatio(true);
-        button.setGraphic(imageView);
     }
 
     private void configureSvgToolButton(Button button, String tooltipText, String svgPathContent) {

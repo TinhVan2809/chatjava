@@ -662,27 +662,43 @@
 }
 
 .composer-tool-button {
-    -fx-min-width: 42px;
-    -fx-min-height: 42px;
-    -fx-pref-width: 42px;
-    -fx-pref-height: 42px;
+    -fx-min-width: 40px;
+    -fx-min-height: 40px;
+    -fx-pref-width: 40px;
+    -fx-pref-height: 40px;
     -fx-padding: 0;
-    -fx-background-color: rgba(37, 99, 235, 0.08);
-    -fx-border-color: rgba(37, 99, 235, 0.14);
-    -fx-text-fill: #1d4ed8;
+    -fx-background-color: transparent;
+    -fx-background-radius: 50%;
+    -fx-border-color: transparent;
+    -fx-border-radius: 50%;
+    -fx-text-fill: #64748b;
+    -fx-cursor: hand;
 }
 
 .composer-tool-icon {
-    -fx-fill: #1d4ed8;
+    -fx-fill: #64748b;
 }
 
 .composer-tool-button:hover {
-    -fx-background-color: rgba(37, 99, 235, 0.14);
+    -fx-background-color: rgba(37, 99, 235, 0.1);
+    -fx-text-fill: #2563eb;
+}
+
+.composer-tool-button:hover .composer-tool-icon {
+    -fx-fill: #2563eb;
+}
+
+.composer-tool-button .image-view {
+    -fx-opacity: 0.65;
+}
+
+.composer-tool-button:hover .image-view {
+    -fx-opacity: 1.0;
 }
 
 .composer-tool-button.composer-tool-button-active {
-    -fx-background-color: rgba(37, 99, 235, 0.18);
-    -fx-border-color: rgba(37, 99, 235, 0.24);
+    -fx-background-color: rgba(37, 99, 235, 0.15);
+    -fx-text-fill: #2563eb;
 }
 
 .typing-indicator-pane {
@@ -1139,18 +1155,27 @@
 }
 
 .root-pane.theme-dark .composer-tool-button {
-    -fx-background-color: rgba(59, 130, 246, 0.12);
-    -fx-border-color: rgba(59, 130, 246, 0.22);
-    -fx-text-fill: #93c5fd;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: #94a3b8;
 }
 
 .root-pane.theme-dark .composer-tool-icon {
-    -fx-fill: #93c5fd;
+    -fx-fill: #94a3b8;
+}
+
+.root-pane.theme-dark .composer-tool-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+    -fx-text-fill: #e2e8f0;
+}
+
+.root-pane.theme-dark .composer-tool-button:hover .composer-tool-icon {
+    -fx-fill: #e2e8f0;
 }
 
 .root-pane.theme-dark .composer-tool-button.composer-tool-button-active {
-    -fx-background-color: rgba(59, 130, 246, 0.20);
-    -fx-border-color: rgba(59, 130, 246, 0.28);
+    -fx-background-color: rgba(59, 130, 246, 0.25);
+    -fx-text-fill: #93c5fd;
 }
 
 .root-pane.theme-dark .conversation-list .list-cell:filled:hover {
