@@ -653,6 +653,14 @@
     -fx-border-width: 1 0 0 0;
 }
 
+.composer-shell.drag-over {
+    -fx-border-color: #2563eb;
+    -fx-border-width: 2px;
+    -fx-border-style: dashed;
+    -fx-background-color: rgba(37, 99, 235, 0.05);
+    -fx-border-insets: 0;
+}
+
 .composer-row {
     -fx-alignment: center-left;
 }
@@ -996,6 +1004,11 @@
     -fx-background-color: linear-gradient(to bottom right, #0f172a, #111827);
 }
 
+.root-pane.theme-dark .composer-shell.drag-over {
+    -fx-border-color: #3b82f6;
+    -fx-background-color: rgba(59, 130, 246, 0.1);
+}
+
 .root-pane.theme-dark .launcher-card,
 .root-pane.theme-dark .auth-card,
 .root-pane.theme-dark .info-card,
@@ -1327,4 +1340,58 @@
 .root-pane.theme-dark .message-search-results .list-cell:filled:selected,
 .root-pane.theme-dark .message-search-results .list-cell:filled:selected:hover {
     -fx-background-color: rgba(59, 130, 246, 0.18);
+}
+
+/* Style cho thanh icon sidebar mới */
+.icon-sidebar {
+    -fx-background-color: linear-gradient(to top right, #8ec5fc 0%, #8dd3ff 25%, #a1d8ff 50%, #c1d2ff 75%, #e0c3ff 100%);
+    -fx-border-color: rgba(214, 220, 230, 0.85);
+    -fx-border-width: 0 1 0 0;
+}
+
+/* Style chung cho nút để xóa nền và viền mặc định */
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-min-width: 37px;
+    -fx-min-height: 37px;
+    -fx-background-radius: 50%; /* Bo góc mềm mại cho nút khi hover */
+    -fx-alignment: center;
+}
+
+.icon-logo{
+     -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-min-width: 37px;
+    -fx-min-height: 37px;
+    -fx-alignment: center;
+}
+
+/* 1. MÀU MẶC ĐỊNH CHO ICON SVG */
+.icon-button .menu-icon {
+    -fx-fill: #8E8E93; /* Màu xám nhạt cho icon khi bình thường */
+}
+
+/* 2. HIỆU ỨNG KHI HOVER (DI CHUỘT) */
+.icon-button:hover {
+    -fx-background-color: #E5E5EA; /* Nền xám nhạt hiện lên khi di chuột */
+}
+.icon-button:hover .menu-icon {
+    -fx-fill: #1C1C1E; /* Icon đổi sang màu tối hơn khi hover */
+}
+
+/* 3. TRẠNG THÁI ĐANG ĐƯỢC CHỌN (ACTIVE) */
+.active-icon {
+    -fx-background-color: #000000; /* Nền đen như trong thiết kế */
+}
+.active-icon .menu-icon {
+    -fx-fill: #FFFFFF; /* Icon màu trắng trên nền đen */
+}
+
+/* Đảm bảo khi hover vào nút đang active thì không bị mất màu trắng */
+.active-icon:hover {
+    -fx-background-color: #333333;
+}
+.active-icon:hover .menu-icon {
+    -fx-fill: #FFFFFF; 
 }

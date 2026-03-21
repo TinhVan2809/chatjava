@@ -56,6 +56,10 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.DragEvent;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.TransferMode;
+import java.io.File;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
@@ -185,6 +189,8 @@ public class MessengerController implements ChatClientListener {
     private Button sendFileButton;
     @FXML
     private Button sendButton;
+    @FXML
+    private VBox composerShell;
     @FXML
     private Button themeToggleButton;
 
@@ -360,6 +366,62 @@ public class MessengerController implements ChatClientListener {
     @FXML
     private void onClearReply() {
         clearReply();
+    }
+
+    @FXML
+    private void onDragOver(DragEvent event) {
+        if (event.getGestureSource() != composerShell && event.getDragboard().hasFiles()) {
+            event.acceptTransferModes(TransferMode.COPY);
+            if (!composerShell.getStyleClass().contains("drag-over")) {
+                composerShell.getStyleClass().add("drag-over");
+            }
+        }
+        event.consume();
+    }
+
+    @FXML
+    private void onDragDropped(DragEvent event) {
+        Dragboard db = event.getDragboard();
+        boolean success = false;
+        if (db.hasFiles()) {
+            List<File> files = db.getFiles();
+            if (files != null) {
+                for (File file : files) {
+                    handleDroppedFile(file.toPath());
+                }
+            }
+            success = true;
+        }
+        event.setDropCompleted(success);
+        composerShell.getStyleClass().remove("drag-over");
+        event.consume();
+    }
+
+    @FXML
+    private void onDragExited(DragEvent event) {
+        composerShell.getStyleClass().remove("drag-over");
+        event.consume();
+    }
+
+    private void handleDroppedFile(Path path) {
+        if (activeConversation == null || service == null || path == null) {
+            return;
+        }
+
+        String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        boolean isImage = fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")
+                || fileName.endsWith(".gif") || fileName.endsWith(".bmp") || fileName.endsWith(".webp");
+
+        Conversation targetConversation = activeConversation;
+        if (isImage) {
+            Thread sender = new Thread(() -> sendImageAttachment(targetConversation, path), "fx-send-image-dragdrop-" + System.currentTimeMillis());
+            sender.setDaemon(true);
+            sender.start();
+        } else {
+            Thread sender = new Thread(() -> sendFileAttachment(targetConversation, path), "fx-send-file-dragdrop-" + System.currentTimeMillis());
+            sender.setDaemon(true);
+            sender.start();
+        }
     }
 
     @FXML
@@ -1958,11 +2020,11 @@ public class MessengerController implements ChatClientListener {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.initOwner(rootPane.getScene() == null ? null : rootPane.getScene().getWindow());
         alert.setTitle("Incoming call");
-        alert.setHeaderText(resolveCallPeerDisplayName(fromUsername, fromDisplayName) + " is calling you");
-        alert.setContentText("Do you want to answer the voice call?");
+        alert.setHeaderText(resolveCallPeerDisplayName(fromUsername, fromDisplayName) + " đang gọi cho bạn.");
+        alert.setContentText("Bạn có muốn trả lời cuộc gọi?");
 
-        ButtonType acceptButton = new ButtonType("Accept", ButtonBar.ButtonData.OK_DONE);
-        ButtonType declineButton = new ButtonType("Decline", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType acceptButton = new ButtonType("Chấp nhận", ButtonBar.ButtonData.OK_DONE);
+        ButtonType declineButton = new ButtonType("Từ chối", ButtonBar.ButtonData.CANCEL_CLOSE);
         alert.getButtonTypes().setAll(acceptButton, declineButton);
         alert.setOnHidden(event -> {
             if (incomingCallAlert == alert) {
@@ -1982,8 +2044,8 @@ public class MessengerController implements ChatClientListener {
             return;
         }
 
-        service.sendPrivateCallDecline(fromUsername, callId, "Cuoc goi da bi tu choi.");
-        appendLocalSystemMessage(conversation, "You declined the call.");
+        service.sendPrivateCallDecline(fromUsername, callId, resolveCallPeerDisplayName(fromUsername, fromDisplayName) + " đã từ chối cuộc gọi.");
+        appendLocalSystemMessage(conversation, "Bạn đã từ chối cuộc gọi.");
         clearCallState();
         updateHeader(activeConversation);
     }

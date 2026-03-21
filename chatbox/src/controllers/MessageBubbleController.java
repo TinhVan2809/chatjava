@@ -84,9 +84,9 @@ public class MessageBubbleController {
     private Runnable onReplyAction;
     private Runnable onDeleteAction;
     private final ContextMenu actionsMenu = new ContextMenu();
-    private final MenuItem replyMenuItem = new MenuItem("Reply");
+    private final MenuItem replyMenuItem = new MenuItem("Trả lời");
     private final MenuItem copyMenuItem = new MenuItem("Copy");
-    private final MenuItem deleteMenuItem = new MenuItem("Xoa (o phia toi)");
+    private final MenuItem deleteMenuItem = new MenuItem("Xóa");
 
     @FXML
     private void initialize() {
