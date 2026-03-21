@@ -7,6 +7,7 @@
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Tooltip?>
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
@@ -168,13 +169,33 @@
                         <HBox alignment="CENTER_RIGHT" spacing="8.0">
                             <children>
                                 <Button fx:id="searchMessagesButton" mnemonicParsing="false" onAction="#onToggleMessageSearch"
-                                        styleClass="secondary-button compact-button header-icon-button search-toggle-button" text="" />
+                                         styleClass="secondary-button, compact-button, header-icon-button, search-toggle-button"> 
+                                    <graphic>
+                                        <SVGPath content="M23.854,23.146l-6.449-6.449c1.607-1.775,2.596-4.12,2.596-6.697C20,4.486,15.514,0,10,0S0,4.486,0,10s4.486,10,10,10c2.577,0,4.922-.988,6.697-2.596l6.449,6.449,.707-.707Zm-13.854-4.146C5.038,19,1,14.962,1,10S5.038,1,10,1s9,4.038,9,9-4.037,9-9,9Z" scaleX="0.78" scaleY="0.78" styleClass="header-action-icon" />
+                                    </graphic>
+                                    <tooltip><Tooltip text="Search messages" /></tooltip>
+                                </Button>
                                 <Button fx:id="callButton" mnemonicParsing="false" onAction="#onStartCall"
-                                        styleClass="secondary-button compact-button header-icon-button call-button" text="" />
+                                     styleClass="secondary-button, compact-button, header-icon-button, call-button"> 
+                                    <graphic>
+                                        <SVGPath content="M22.27,1.77l-1.12-.98c-1.02-1.02-2.75-1.07-3.85,.05l-1.87,2.45c-1.05,1.05-1.05,2.76,0,3.8l1.49,1.53c-1.62,3.8-4.61,6.8-8.29,8.3l-1.53-1.49c-.51-.51-1.18-.79-1.9-.79s-1.39,.28-1.85,.75l-2.54,1.96c-1.05,1.05-1.05,2.76-.02,3.78l1.02,1.17c1.1,1.1,2.58,1.71,4.19,1.71,7.75,0,18.02-10.28,18.02-18.02,0-1.6-.61-3.09-1.73-4.21ZM5.98,23c-1.34,0-2.57-.5-3.46-1.39l-1.02-1.18c-.66-.66-.66-1.73-.05-2.35l2.54-1.96c.32-.32,.74-.5,1.2-.5s.88,.18,1.2,.5c0,0,1.77,1.73,1.77,1.73,.14,.14,.34,.18,.53,.11,4.17-1.59,7.56-4.98,9.29-9.28,.07-.18,.03-.39-.11-.54l-1.73-1.77c-.66-.66-.66-1.73,.04-2.44l1.87-2.45c.66-.66,1.73-.66,2.42,.02l1.12,.98c.91,.91,1.41,2.14,1.41,3.48,0,7.16-9.86,17.02-17.02,17.02Z" scaleX="0.78" scaleY="0.78" styleClass="header-action-icon" />
+                                    </graphic>
+                                    <tooltip><Tooltip text="Voice call" /></tooltip>
+                                </Button>
                                 <Button fx:id="videoCallButton" mnemonicParsing="false" onAction="#onStartVideoCall"
-                                        styleClass="secondary-button compact-button header-icon-button video-call-button" text="" />
+                                      styleClass="secondary-button, compact-button, header-icon-button, video-call-button"> 
+                                    <graphic>
+                                        <SVGPath content="M24,7.64v8.666c0,.635-.353,1.206-.92,1.489-.238,.119-.493,.177-.747,.177-.353,0-.702-.113-.997-.334l-2.336-2.327v.19c0,2.481-2.019,4.5-4.5,4.5H4.5c-2.481,0-4.5-2.019-4.5-4.5v-7c0-2.481,2.019-4.5,4.5-4.5H14.5c2.481,0,4.5,2.019,4.5,4.5v.157l2.281-2.301c.563-.428,1.23-.489,1.799-.205,.568,.284,.92,.854,.92,1.489Zm-6,.86c0-1.93-1.57-3.5-3.5-3.5H4.5c-1.93,0-3.5,1.57-3.5,3.5v7c0,1.93,1.57,3.5,3.5,3.5H14.5c1.93,0,3.5-1.57,3.5-3.5v-7Zm5-.86c0-.257-.138-.48-.368-.595-.23-.115-.491-.091-.697,.062l-2.936,2.97v3.821l2.989,2.986c.152,.108,.412,.133,.643,.017,.23-.115,.368-.337,.368-.595V7.64Z" scaleX="0.78" scaleY="0.78" styleClass="header-action-icon" />
+                                    </graphic>
+                                    <tooltip><Tooltip text="Video call" /></tooltip>
+                                </Button>
                                 <Button fx:id="hangupButton" managed="false" mnemonicParsing="false" onAction="#onHangupCall"
-                                        styleClass="secondary-button compact-button header-icon-button call-end-button" text="" visible="false" />
+                                        styleClass="secondary-button, compact-button, header-icon-button, call-end-button" visible="false">
+                                    <graphic>
+                                        <SVGPath content="M6.62 10.79C8.06 13.62 10.38 15.94 13.21 17.38L15.41 15.18C15.69 14.9 16.08 14.82 16.43 14.93C17.55 15.3 18.75 15.5 20 15.5C20.55 15.5 21 15.95 21 16.5V20C21 20.55 20.55 21 20 21C10.61 21 3 13.39 3 4C3 3.45 3.45 3 4 3H7.5C8.05 3 8.5 3.45 8.5 4C8.5 5.25 8.7 6.45 9.07 7.57C9.18 7.92 9.1 8.31 8.82 8.59L6.62 10.79Z" rotate="135.0" scaleX="0.78" scaleY="0.78" styleClass="header-action-icon" />
+                                    </graphic>
+                                    <tooltip><Tooltip text="End call" /></tooltip>
+                                </Button>
                             </children>
                         </HBox>
                     </children>

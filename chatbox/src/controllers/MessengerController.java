@@ -287,10 +287,6 @@ public class MessengerController implements ChatClientListener {
         configureSvgToolButton(sendImageButton, "Send image", IMAGE_ICON_PATH);
         configureSvgToolButton(sendEmojiButton, "Send icon", EMOJI_ICON_PATH);
         configureSvgToolButton(sendFileButton, "Send file", FILE_ICON_PATH);
-        configureHeaderIconButton(searchMessagesButton, "Search messages", SEARCH_ICON_PATH, 0);
-        configureHeaderIconButton(callButton, "Voice call", PHONE_ICON_PATH, 0);
-        configureHeaderIconButton(videoCallButton, "Video call", VIDEO_ICON_PATH, 0);
-        configureHeaderIconButton(hangupButton, "End call", PHONE_ICON_PATH, 135);
     }
 
     public void setApp(DesktopApp app, ChatClientService service) {
