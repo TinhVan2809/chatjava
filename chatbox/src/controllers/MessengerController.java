@@ -1050,7 +1050,7 @@ public class MessengerController implements ChatClientListener {
         }
 
         closeIncomingCallAlert();
-        endCurrentCall(false, "Call ended by " + resolveCallPeerDisplayName(fromUsername, fromUsername) + ".");
+        endCurrentCall(false, resolveCallPeerDisplayName(fromUsername, fromUsername) + " đã kết thúc cuộc gọi.");
     }
 
     @Override

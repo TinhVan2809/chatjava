@@ -1354,9 +1354,15 @@
 
 /* Style cho thanh icon sidebar mới */
 .icon-sidebar {
-    -fx-background-color: linear-gradient(to top right, #8ec5fc 0%, #8dd3ff 25%, #a1d8ff 50%, #c1d2ff 75%, #e0c3ff 100%);
+    /* -fx-background-color: linear-gradient(to top right, #8ec5fc 0%, #8dd3ff 25%, #a1d8ff 50%, #c1d2ff 75%, #e0c3ff 100%); */
+    -fx-background-color: linear-gradient(to top right, #abecd6 0%, #fbed96 100%);
     -fx-border-color: rgba(214, 220, 230, 0.85);
     -fx-border-width: 0 1 0 0;
+}
+
+.root-pane.theme-dark .icon-sidebar {
+    -fx-background-color: linear-gradient(to top right, #8ec5fc 0%, #8dd3ff 25%, #a1d8ff 50%, #c1d2ff 75%, #e0c3ff 100%);
+    -fx-border-color: rgba(51, 65, 85, 0.95);
 }
 
 /* Style chung cho nút để xóa nền và viền mặc định */
