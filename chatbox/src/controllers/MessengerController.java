@@ -420,17 +420,20 @@ public class MessengerController implements ChatClientListener {
         }
     }
 
+    // Xử lý gửi file
     @FXML
     private void onOpenProfile() {
         showProfilePopup();
     }
 
+    // Xử lý đăng xuất
     @FXML
     private void onLogout() {
         shutdown();
         app.logoutToAuth(session);
     }
 
+    // Xử lý dark mode
     @FXML
     private void onToggleTheme() {
         if (rootPane.getStyleClass().contains("theme-dark")) {
@@ -445,6 +448,7 @@ public class MessengerController implements ChatClientListener {
         syncEmojiPickerTheme();
     }
 
+    // Xử lý voice call
     @FXML
     private void onStartCall() {
         if (activeConversation == null || activeConversation.isGroupConversation() || service == null) {
